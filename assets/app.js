@@ -189,6 +189,7 @@ function renderTop() {
   }).join('');
 
   const inRoom = mode === 'room' || mode === 'local';
+  $('guide').hidden = mode !== 'lobby';
   $('tabs').hidden = !inRoom; $('panel').hidden = !inRoom;
 }
 
@@ -251,8 +252,7 @@ function renderStage() {
       <div class="verdict ${view.hit ? 'hit' : ''}">${esc(view.verdict)}</div>
       <div class="note">${esc(view.note)}</div>
       <div class="actions">${q > 0 ? `<button class="btn" data-act="next">次の袋へ（残り${q}）</button>` :
-        `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめ買い</button>`}
-        <button class="btn ghost" data-act="back">カードをしまう</button></div>`;
+        `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめ買い</button>`}</div>`;
   } else if (q > 0) {
     html += `<div class="queue">未開封 ${q}袋</div><div class="slot">${packHTML(false)}</div>
       <div class="note" style="margin-top:0">上の切り取り線を右へなぞると開きます</div>
@@ -315,7 +315,6 @@ $('stage').addEventListener('click', e => {
     case 'buy1': p.queue += 1; view.stage = 'pack'; saveMe(); break;
     case 'buy5': p.queue += 5; view.stage = 'pack'; saveMe(); break;
     case 'next': view.stage = 'pack'; break;
-    case 'back': view.stage = 'pack'; view.last = null; break;
     case 'tear': tear(); return;
   }
   renderAll();

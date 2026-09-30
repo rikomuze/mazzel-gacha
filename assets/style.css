@@ -162,4 +162,12 @@ label.up input{display:none}
 .lobby form{display:flex;gap:8px}
 .lobby input{flex:1;min-width:0;padding:11px;border:1px solid var(--line);background:var(--desk);color:var(--pencil);font:inherit;text-transform:uppercase;letter-spacing:.2em;text-align:center}
 .credit{font-size:.72rem;color:var(--faded);text-align:center}
+
+/* guide */
+.steps{list-style:none;margin:0;padding:0;counter-reset:st;display:flex;flex-direction:column;gap:12px}
+.steps li{counter-increment:st;display:grid;grid-template-columns:2em 1fr;column-gap:10px;row-gap:2px;align-items:baseline}
+.steps li::before{content:counter(st);grid-row:span 2;font-family:var(--hand);font-weight:600;font-size:1.4rem;color:var(--berry);line-height:1}
+.steps b{font-size:.95rem}
+.steps span{font-size:.86rem;color:var(--faded);line-height:1.7}
+.facts{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;font-size:.86rem;color:var(--faded);line-height:1.7}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
