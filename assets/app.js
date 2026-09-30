@@ -34,6 +34,7 @@ let roomDoc = { owner: null, price: 550, secretRate: 3 };
 let players = {};
 let view = { stage: 'pack', last: null, shot: 0, verdict: '', note: '', hit: false, fresh: false, tab: 'rank', joinedAt: Date.now() };
 let pendingReset = null;
+let authError = null;
 
 const mine = () => players[me];
 const cnt = (p, id) => (p && p.inv && p.inv[id]) || 0;
@@ -91,8 +92,8 @@ async function boot() {
     me = cred.user.uid;
     fdb = firebase.firestore();
   } catch (e) {
-    console.error(e); mode = 'local'; loadLocal();
-    toast('共有サーバーにつながらないため、ひとりモードで開きました'); renderAll(); return;
+    console.error(e); mode = 'local'; loadLocal(); authError = e && e.code || 'unknown';
+    renderAll(); return;
   }
   const code = roomFromUrl();
   if (code) enterRoom(code); else { mode = 'lobby'; renderAll(); }
@@ -154,7 +155,21 @@ function draw() {
 /* ---------- top rows ---------- */
 function renderTop() {
   const b = $('banner');
-  if (mode === 'local') { b.hidden = false; b.innerHTML = '<b>ひとりモード</b>：共有サーバーの設定がないため、この端末だけに保存されます。'; }
+  if (mode === 'local') {
+    b.hidden = false;
+    const why = {
+      'auth/operation-not-allowed': 'Firebaseで匿名ログインが有効になっていません（Authentication → ログイン方法 → 匿名）。',
+      'auth/admin-restricted-operation': 'Firebaseで匿名ログインが有効になっていません（Authentication → ログイン方法 → 匿名）。',
+      'auth/configuration-not-found': 'FirebaseのAuthenticationがまだ始まっていません（Authentication →「始める」→ 匿名を有効に）。',
+      'auth/network-request-failed': '通信できませんでした。電波の良い場所で再読み込みしてください。',
+      'auth/invalid-api-key': 'Firebaseの設定（apiKey）が正しくありません。',
+      'auth/api-key-not-valid.-please-pass-a-valid-api-key.': 'Firebaseの設定（apiKey）が正しくありません。',
+      'auth/unauthorized-domain': 'このサイトのドメインがFirebaseで許可されていません（Authentication → 設定 → 承認済みドメイン）。'
+    };
+    b.innerHTML = authError
+      ? `<b>ひとりモード</b>：共有サーバーにつながらないため、この端末だけに保存されます。<br>${esc(why[authError] || 'つながらなかった理由')}（${esc(authError)}）`
+      : '<b>ひとりモード</b>：共有サーバーの設定がないため、この端末だけに保存されます。';
+  }
   else b.hidden = true;
 
   const rb = $('roombar');
