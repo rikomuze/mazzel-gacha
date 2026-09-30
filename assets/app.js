@@ -1,0 +1,419 @@
+/* 推しガチャ開封所 — MUZE TOOL BOX
+ * Firebase (匿名ログイン + Firestore) で部屋ごとに結果を共有する。
+ * 設定が無いときは localStorage だけで動く「ひとりモード」。
+ *
+ * Firestore:
+ *   rooms/{code}                {owner, price, secretRate, createdAt}
+ *   rooms/{code}/players/{uid}  {name, oshi, inv, shots, pulls, hits, queue, recent}
+ */
+(() => {
+'use strict';
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const yen = n => '¥' + Number(n || 0).toLocaleString();
+const $ = id => document.getElementById(id);
+const nums = n => Array.from({length:n}, (_, k) => String(k + 1).padStart(2, '0'));
+
+/* ---------- members (static) ---------- */
+const NAMES = ['KAIRYU','NAOYA','RAN','SEITO','RYUKI','TAKUTO','HAYATO','EIKI'];
+const MEMBERS = NAMES.map((name, i) => ({
+  id: 'mazzel-' + name.toLowerCase(), name, order: i, secret: false,
+  shots: nums(18).map(x => `photos/${name.toLowerCase()}/${x}.jpg`)
+}));
+MEMBERS.push({ id: 'mazzel-secret', name: 'MAZZEL 集合', order: 99, secret: true,
+  shots: nums(16).map(x => `photos/group/${x}.jpg`) });
+const M = id => MEMBERS.find(m => m.id === id);
+const NORMALS = MEMBERS.filter(m => !m.secret);
+const SECRETS = MEMBERS.filter(m => m.secret);
+const SHOT_TOTAL = MEMBERS.reduce((s, m) => s + m.shots.length, 0);
+
+/* ---------- state ---------- */
+let mode = 'loading';            // loading | lobby | room | local
+let fdb = null, me = null, room = null, unsub = [];
+let roomDoc = { owner: null, price: 550, secretRate: 3 };
+let players = {};
+let view = { stage: 'pack', last: null, shot: 0, verdict: '', note: '', hit: false, fresh: false, tab: 'rank', joinedAt: Date.now() };
+let pendingReset = null;
+
+const mine = () => players[me];
+const cnt = (p, id) => (p && p.inv && p.inv[id]) || 0;
+const got = (p, id) => (p && p.shots && Array.isArray(p.shots[id])) ? p.shots[id] : [];
+const spare = (p, id) => cnt(p, id) - (p && p.oshi === id ? 1 : 0);
+const isOwner = () => mode === 'local' || roomDoc.owner === me;
+function normPlayer(d) {
+  const p = { name: '', oshi: '', inv: {}, shots: {}, pulls: 0, hits: 0, queue: 0, recent: [], ...d };
+  ['inv', 'shots'].forEach(k => { if (typeof p[k] !== 'object' || p[k] === null) p[k] = {}; });
+  if (typeof p.queue !== 'number') p.queue = 0;
+  if (!Array.isArray(p.recent)) p.recent = [];
+  return p;
+}
+
+/* ---------- local mode ---------- */
+const LKEY = 'oshigacha-gh-local-v1';
+function loadLocal() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(LKEY)); } catch (e) {}
+  roomDoc = { owner: 'local', price: 550, secretRate: 3, ...(s?.room || {}) };
+  me = 'local';
+  players = { local: normPlayer(s?.me || {}) };
+}
+function saveLocal() { try { localStorage.setItem(LKEY, JSON.stringify({ room: roomDoc, me: players.local })); } catch (e) {} }
+
+/* ---------- writes ---------- */
+let wq = Promise.resolve();
+function queueWrite(fn) { wq = wq.then(fn).catch(err => { console.error(err); toast('保存できませんでした。通信を確認してください'); }); return wq; }
+const roomRef = () => fdb.collection('rooms').doc(room);
+function savePlayer(id) {
+  if (mode === 'local') { saveLocal(); return; }
+  const body = JSON.parse(JSON.stringify(players[id]));
+  queueWrite(() => roomRef().collection('players').doc(id).set(body));
+}
+const saveMe = () => savePlayer(me);
+function saveRoom(patch) {
+  Object.assign(roomDoc, patch);
+  if (mode === 'local') { saveLocal(); return; }
+  queueWrite(() => roomRef().update(patch));
+}
+
+/* ---------- boot ---------- */
+const CODE_RE = /^[A-Z0-9]{6}$/;
+function roomFromUrl() {
+  const c = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
+  return CODE_RE.test(c) ? c : null;
+}
+async function boot() {
+  const cfg = window.FIREBASE_CONFIG || {};
+  if (!window.firebase || !cfg.apiKey) {
+    mode = 'local'; loadLocal(); renderAll(); return;
+  }
+  try {
+    firebase.initializeApp(cfg);
+    const cred = await firebase.auth().signInAnonymously();
+    me = cred.user.uid;
+    fdb = firebase.firestore();
+  } catch (e) {
+    console.error(e); mode = 'local'; loadLocal();
+    toast('共有サーバーにつながらないため、ひとりモードで開きました'); renderAll(); return;
+  }
+  const code = roomFromUrl();
+  if (code) enterRoom(code); else { mode = 'lobby'; renderAll(); }
+}
+async function enterRoom(code) {
+  unsub.forEach(u => u()); unsub = [];
+  room = code; players = {}; view.joinedAt = Date.now();
+  const snap = await fdb.collection('rooms').doc(code).get().catch(() => null);
+  if (!snap || !snap.exists) {
+    room = null; mode = 'lobby'; renderAll();
+    toast(`部屋「${code}」が見つかりません。コードを確かめてください`); return;
+  }
+  try { localStorage.setItem('oshigacha-last-room', code); } catch (e) {}
+  const url = new URL(location.href); url.searchParams.set('room', code); history.replaceState(null, '', url);
+  mode = 'room';
+  unsub.push(roomRef().onSnapshot(s => { if (s.exists) roomDoc = { ...roomDoc, ...s.data() }; renderAll(); }, dead));
+  unsub.push(roomRef().collection('players').onSnapshot(s => {
+    const next = {}; s.forEach(d => { next[d.id] = normPlayer(d.data()); });
+    // keep my optimistic local copy while my own writes are pending
+    if (players[me] && s.metadata.hasPendingWrites) next[me] = players[me];
+    announce(next); players = next; renderAll();
+  }, dead));
+  renderAll();
+}
+async function createRoom() {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let tries = 0; tries < 5; tries++) {
+    const code = Array.from({length:6}, () => abc[Math.floor(Math.random() * abc.length)]).join('');
+    const ref = fdb.collection('rooms').doc(code);
+    const ex = await ref.get().catch(() => null);
+    if (ex && ex.exists) continue;
+    try {
+      await ref.set({ owner: me, price: 550, secretRate: 3, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      await enterRoom(code); return;
+    } catch (e) { console.error(e); toast('部屋を作れませんでした。時間をおいて試してください'); return; }
+  }
+  toast('部屋を作れませんでした。もう一度押してください');
+}
+function dead(e) { console.error(e); toast('共有データとの接続が切れました。ページを開き直してください'); }
+
+function announce(next) {
+  for (const [id, p] of Object.entries(next)) {
+    if (id === me) continue;
+    const r = p.recent?.[0], old = players[id]?.recent?.[0];
+    if (r && r.t > view.joinedAt && (!old || old.t !== r.t)) {
+      const m = M(r.m);
+      if (r.hit) toast(`${p.name}が自引き！ ${m?.name || ''}`);
+      else if (m?.secret) toast(`${p.name}がシークレットを引きました`);
+    }
+  }
+}
+
+/* ---------- gacha ---------- */
+function draw() {
+  const pool = (SECRETS.length && Math.random() * 100 < roomDoc.secretRate) ? SECRETS : NORMALS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* ---------- top rows ---------- */
+function renderTop() {
+  const b = $('banner');
+  if (mode === 'local') { b.hidden = false; b.innerHTML = '<b>ひとりモード</b>：共有サーバーの設定がないため、この端末だけに保存されます。'; }
+  else b.hidden = true;
+
+  const rb = $('roombar');
+  if (mode === 'room') {
+    rb.hidden = false;
+    rb.innerHTML = `<span>部屋 <b>${esc(room)}</b></span><span style="display:flex;gap:6px"><button class="btn ghost" id="copyLink">招待リンクをコピー</button><button class="btn ghost" id="leave">部屋を出る</button></span>`;
+    $('copyLink').onclick = () => copy(location.href, '招待リンクをコピーしました');
+    $('leave').onclick = () => { unsub.forEach(u => u()); unsub = []; room = null; players = {}; mode = 'lobby';
+      const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState(null, '', url); renderAll(); };
+  } else rb.hidden = true;
+
+  const ids = Object.keys(players).filter(id => players[id].name)
+    .sort((a, b) => (a === me ? -1 : b === me ? 1 : 0) || (players[b].pulls - players[a].pulls));
+  $('players').innerHTML = ids.map(id => {
+    const p = players[id], o = M(p.oshi);
+    return `<div class="pchip ${id === me ? 'me on' : ''}"><span class="dot">${o ? `<img src="${esc(o.shots[0])}" alt="">` : '?'}</span>${esc(p.name)}${id === me ? '（自分）' : ''} <small>${p.pulls}袋</small></div>`;
+  }).join('');
+
+  const inRoom = mode === 'room' || mode === 'local';
+  $('tabs').hidden = !inRoom; $('panel').hidden = !inRoom;
+}
+
+/* ---------- stage ---------- */
+function packHTML(empty, extra = '') {
+  return `<div class="pack ${empty ? 'empty' : ''} ${extra}" id="pack" ${empty ? '' : 'role="button" tabindex="0" aria-label="袋を開ける"'}>
+    <div class="strip" id="strip"><span class="cut" id="cut"></span>✂ ここから切って開けてね →</div>
+    <div class="body"><div class="fine">RANDOM ARTIST PHOTO CARD</div><div class="logo">MAZZEL</div>
+    <div class="fine">全${NORMALS.length}種＋シークレット</div><div class="fine">${yen(roomDoc.price)}</div></div></div>`;
+}
+function setStage(html, cache) {
+  const st = $('stage');
+  if (cache) { if (st.dataset.html === html && !view.fresh) return false; st.dataset.html = html; }
+  else st.dataset.html = '';
+  st.innerHTML = html; return true;
+}
+function renderStage() {
+  if (mode === 'loading') return;
+  if (mode === 'lobby') {
+    let last = null; try { last = localStorage.getItem('oshigacha-last-room'); } catch (e) {}
+    setStage(`<div class="lobby">
+      <h2>部屋を作って友達を呼ぶ</h2>
+      <button class="btn" id="mk">新しい部屋を作る</button>
+      <p class="hint">作った部屋の招待リンクを送ると、友達が同じ部屋に入れます。</p>
+      <div class="or">部屋コードを持っている人</div>
+      <form id="joinCode"><input id="code" maxlength="6" placeholder="ABC123" aria-label="部屋コード" value="${esc(last || '')}" autocomplete="off"><button class="btn" type="submit">入る</button></form>
+    </div>`);
+    $('mk').onclick = e => { e.target.disabled = true; createRoom().finally(() => { if ($('mk')) $('mk').disabled = false; }); };
+    $('joinCode').onsubmit = e => {
+      e.preventDefault(); const c = $('code').value.trim().toUpperCase();
+      if (!CODE_RE.test(c)) { toast('部屋コードは英数字6文字です'); return; }
+      enterRoom(c);
+    };
+    return;
+  }
+  const p = mine();
+  if (!p || !p.name) {
+    setStage(`<form class="join" id="joinForm">
+      <h2>開封所に参加</h2>
+      <label for="jn">ニックネーム<input type="text" id="jn" maxlength="12" required placeholder="例：みー"></label>
+      <label for="jo">推し<select id="jo">${NORMALS.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label>
+      <p class="hint">自引き判定に使います。箱推しの人も、いちばんの1人を選んでください。</p>
+      <button class="btn" type="submit">参加する</button></form>`);
+    $('joinForm').onsubmit = e => {
+      e.preventDefault(); const n = $('jn').value.trim(); if (!n) return;
+      players[me] = normPlayer({ name: n, oshi: $('jo').value }); saveMe(); renderAll();
+    };
+    return;
+  }
+  const o = M(p.oshi), q = p.queue;
+  let html = `<div class="turn">推し：<b>${esc(o?.name || 'なし')}</b>　使った額 <b>${yen(p.pulls * roomDoc.price)}</b></div>`;
+  if (view.stage === 'reveal' && view.last) {
+    const m = view.last, src = m.shots[view.shot];
+    html += `<div class="slot">${packHTML(false, 'torn gone')}
+      <div class="card ${m.secret ? 'secret' : ''}">
+        <div class="ph">${src ? `<img src="${esc(src)}" alt="${esc(m.name)}のアーティスト写真">` : `<div class="init">${esc(m.name)}</div>`}
+          <span class="no">No.${String(m.order + 1 > 90 ? 0 : m.order + 1).padStart(2, '0')}-${String(view.shot + 1).padStart(2, '0')}${m.secret ? ' SECRET' : ''}</span></div>
+        <div class="cap"><span class="nm">${esc(m.name)}</span><span class="grp">MAZZEL</span></div>
+      </div></div>
+      <div class="verdict ${view.hit ? 'hit' : ''}">${esc(view.verdict)}</div>
+      <div class="note">${esc(view.note)}</div>
+      <div class="actions">${q > 0 ? `<button class="btn" data-act="next">次の袋へ（残り${q}）</button>` :
+        `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめ買い</button>`}</div>`;
+  } else if (q > 0) {
+    html += `<div class="queue">未開封 ${q}袋</div><div class="slot">${packHTML(false)}</div>
+      <div class="note" style="margin-top:0">上の切り取り線を右へなぞると開きます</div>
+      <div class="actions"><button class="btn ghost" data-act="tear">ボタンで開ける</button></div>`;
+  } else {
+    html += `<div class="queue">未開封 0袋</div><div class="slot">${packHTML(true)}</div>
+      <div class="actions"><button class="btn" data-act="buy1">1袋買う ${yen(roomDoc.price)}</button><button class="btn ghost" data-act="buy5">5袋まとめ買い</button></div>`;
+  }
+  if (!setStage(html, true)) return;
+  if (view.stage !== 'reveal' && q > 0) bindTear();
+  if (view.stage === 'reveal' && view.hit && view.fresh) { view.fresh = false; confetti($('stage')); }
+  view.fresh = false;
+}
+function bindTear() {
+  const strip = $('strip'), cut = $('cut'), pack = $('pack');
+  let x0 = null;
+  strip.addEventListener('pointerdown', e => { x0 = e.clientX; strip.setPointerCapture(e.pointerId); });
+  strip.addEventListener('pointermove', e => {
+    if (x0 === null) return; const w = strip.offsetWidth, d = Math.max(0, e.clientX - x0);
+    cut.style.width = Math.min(100, d / w * 100) + '%';
+    if (d > w * 0.6) { x0 = null; tear(); }
+  });
+  const end = () => { if (x0 !== null) { x0 = null; cut.style.width = '0'; } };
+  strip.addEventListener('pointerup', end); strip.addEventListener('pointercancel', end);
+  pack.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tear(); } });
+}
+let tearing = false;
+function tear() {
+  const pack = $('pack'), p = mine();
+  if (!pack || tearing || !p || p.queue <= 0) return;
+  tearing = true; pack.classList.add('torn');
+  const m = draw(), k = Math.floor(Math.random() * m.shots.length), had = got(p, m.id), isNew = !had.includes(k);
+  p.queue--; p.pulls++; p.inv = { ...p.inv, [m.id]: cnt(p, m.id) + 1 };
+  if (isNew) p.shots = { ...p.shots, [m.id]: [...had, k].sort((a, b) => a - b) };
+  const c = p.inv[m.id], hit = p.oshi === m.id; if (hit) p.hits++;
+  p.recent = [{ m: m.id, s: k, t: Date.now(), hit }, ...p.recent].slice(0, 15);
+  view.hit = hit; view.fresh = true; view.last = m; view.shot = k;
+  if (hit) view.verdict = c > 1 ? `また${m.name}！自引き${c}枚目` : `自引き成功！${m.name}が来た`;
+  else if (m.secret) view.verdict = 'シークレット！';
+  else view.verdict = c > 1 ? `${m.name}（${c}枚目）` : `${m.name}、はじめまして`;
+  const n = got(p, m.id).length, tot = m.shots.length;
+  const shotNote = isNew ? `新しいアー写！ ${m.name}のアー写 ${n}/${tot}` : `持っているアー写（${n}/${tot}）`;
+  const wants = Object.entries(players).filter(([id, q]) => id !== me && q.name && q.oshi === m.id).map(([, q]) => q.name);
+  view.note = [shotNote, (!hit && wants.length) ? `${wants.join('・')}の推し。交換に出せます` : ''].filter(Boolean).join('　');
+  saveMe();
+  setTimeout(() => { tearing = false; view.stage = 'reveal'; renderAll(); }, 450);
+}
+function confetti(host) {
+  const box = document.createElement('div'); box.className = 'confetti';
+  for (let i = 0; i < 36; i++) {
+    const s = document.createElement('i'); s.style.left = Math.random() * 100 + '%';
+    if (i % 2) s.style.background = 'var(--tape-mint)';
+    s.style.animationDelay = Math.random() * .4 + 's'; box.appendChild(s);
+  }
+  host.appendChild(box); setTimeout(() => box.remove(), 2200);
+}
+$('stage').addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return; const p = mine(); if (!p) return;
+  switch (a.dataset.act) {
+    case 'buy1': p.queue += 1; view.stage = 'pack'; saveMe(); break;
+    case 'buy5': p.queue += 5; view.stage = 'pack'; saveMe(); break;
+    case 'next': view.stage = 'pack'; break;
+    case 'tear': tear(); return;
+  }
+  renderAll();
+});
+
+/* ---------- panels ---------- */
+function trades() {
+  const out = [], ps = Object.values(players).filter(p => p.name);
+  const gives = (a, b) => (b.oshi && spare(a, b.oshi) >= 1) ? M(b.oshi)?.name : null;
+  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+    const a = ps[i], b = ps[j], ag = gives(a, b), bg = gives(b, a);
+    if (ag && bg && a.oshi !== b.oshi) out.push({ m: true, t: `${a.name}の${ag} ⇄ ${b.name}の${bg}` });
+    else if (ag) out.push({ m: false, t: `${a.name} → ${b.name}：${ag}を譲れます` });
+    else if (bg) out.push({ m: false, t: `${b.name} → ${a.name}：${bg}を譲れます` });
+  }
+  return out;
+}
+function ago(t) { const s = Math.max(0, (Date.now() - t) / 1000 | 0); return s < 60 ? `${s}秒前` : s < 3600 ? `${s / 60 | 0}分前` : `${s / 3600 | 0}時間前`; }
+function renderPanel() {
+  if (mode !== 'room' && mode !== 'local') return;
+  const el = $('panel');
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === view.tab));
+  const ps = Object.entries(players).filter(([, p]) => p.name);
+  if (view.tab === 'rank') {
+    const r = ps.map(([, p]) => p).sort((a, b) => b.hits - a.hits || a.pulls - b.pulls);
+    const feed = ps.flatMap(([, p]) => p.recent.map(x => ({ ...x, who: p.name }))).sort((a, b) => b.t - a.t).slice(0, 8);
+    const tr = trades(), my = mine();
+    el.innerHTML = `<h2>自引きランキング</h2>
+      ${r.length ? `<ol class="rank">${r.map((p, i) => `<li><span class="n">${i + 1}</span><span>${esc(p.name)}</span>
+        <span class="v">自引き${p.hits} / ${p.pulls}袋 ・ ${yen(p.pulls * roomDoc.price)}</span></li>`).join('')}</ol>`
+        : '<p class="hint">まだ誰も参加していません。上の開封所から参加すると、ここに並びます。</p>'}
+      <h2>さっき開いた袋</h2>
+      ${feed.length ? `<ul class="feed">${feed.map(f => { const m = M(f.m), src = m?.shots[f.s ?? 0];
+        return `<li class="${f.hit ? 'hit' : ''}"><i>${src ? `<img src="${esc(src)}" alt="" loading="lazy">` : ''}</i>
+        <span>${esc(f.who)}：${esc(m?.name || '')}${f.hit ? ' 自引き！' : m?.secret ? ' シークレット' : ''}</span><time>${ago(f.t)}</time></li>`; }).join('')}</ul>`
+        : '<p class="hint">袋が開くと、誰が何を引いたかがここに流れます。</p>'}
+      <h2>交換できそうな組み合わせ</h2>
+      ${tr.length ? `<ul class="trades">${tr.map(t => `<li class="${t.m ? 'match' : ''}">${t.m ? '<b class="tag">成立</b>' : ''}${esc(t.t)}</li>`).join('')}</ul>`
+        : '<p class="hint">誰かが他の人の推しを引くと、ここに出ます。</p>'}
+      ${my && my.name ? `<button class="btn ghost" id="share">自分の結果をコピー</button>` : ''}`;
+    const sh = $('share');
+    if (sh) sh.onclick = () => {
+      const o = M(my.oshi);
+      copy(`【推しガチャ開封所】${my.name}（${o?.name || ''}推し）は${my.pulls}袋で自引き${my.hits}回！アー写${shotCount(my)}/${SHOT_TOTAL} #推しガチャ`, 'コピーしました');
+    };
+  } else if (view.tab === 'coll') {
+    el.innerHTML = ps.length ? ps.map(([id, p]) => {
+      const own = MEMBERS.filter(m => cnt(p, m.id)).length;
+      const dup = MEMBERS.reduce((s, m) => s + Math.max(0, cnt(p, m.id) - 1), 0);
+      return `<div class="pl"><div class="pl-h"><b>${esc(p.name)}${id === me ? '（自分）' : ''}</b><span>${own}/${MEMBERS.length}人 ・ アー写${shotCount(p)}/${SHOT_TOTAL} ・ ダブり${dup}枚</span></div>
+      <div class="coll">${MEMBERS.map(m => { const c = cnt(p, m.id); const g = got(p, m.id); const src = m.shots[g[g.length - 1] ?? 0];
+        return c ? `<div class="mini"><span class="in"><img src="${esc(src)}" alt="" loading="lazy"></span>
+          <span class="sh">${g.length}/${m.shots.length}</span>
+          ${p.oshi === m.id ? '<span class="star">推し</span>' : ''}<span class="cnt">×${c}</span></div>`
+        : `<div class="mini none" title="${esc(m.name)}">?</div>`; }).join('')}</div></div>`; }).join('')
+      : '<p class="hint">参加した人のコレクションがここに並びます。</p>';
+  } else renderSettings(el);
+}
+const shotCount = p => MEMBERS.reduce((s, m) => s + got(p, m.id).length, 0);
+function renderSettings(el) {
+  const my = mine(), owner = isOwner();
+  el.innerHTML = `
+    ${my && my.name ? `<h2>自分</h2>
+    <div class="row" style="grid-template-columns:1fr 1fr">
+      <input type="text" id="myname" value="${esc(my.name)}" maxlength="12" aria-label="ニックネーム">
+      <select id="myoshi" aria-label="推し">${NORMALS.map(m => `<option value="${m.id}" ${m.id === my.oshi ? 'selected' : ''}>${esc(m.name)}推し</option>`).join('')}</select></div>
+    <div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetMine">自分の開封記録をリセット</button></div>` : ''}
+    <h2>パックの設定${mode === 'room' ? '（部屋の全員共通）' : ''}</h2>
+    ${owner ? '' : '<p class="hint">部屋を作った人だけが変えられます。</p>'}
+    <div class="field"><label for="rate">シークレット排出率：<b id="rv">${roomDoc.secretRate}%</b></label><input type="range" id="rate" min="0" max="20" value="${roomDoc.secretRate}" ${owner ? '' : 'disabled'}></div>
+    <div class="field"><label for="price">1袋の値段（円）</label><input type="number" id="price" min="0" step="10" value="${roomDoc.price}" ${owner ? '' : 'disabled'}></div>
+    ${owner && mode === 'room' ? `<h2>部屋を作った人用</h2><div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetAll">全員の開封記録をリセット</button></div>` : ''}
+    <p class="hint" id="confirmMsg" hidden></p>
+    <p class="hint">カードの写真は公式アーティスト写真です（各メンバー18ショット、シークレットは集合写真16ショット）。</p>`;
+  const q = s => el.querySelector(s);
+  if (my && my.name) {
+    q('#myname').onchange = e => { const v = e.target.value.trim(); if (v) { my.name = v; saveMe(); renderTop(); } };
+    q('#myoshi').onchange = e => { my.oshi = e.target.value; saveMe(); renderAll(); };
+  }
+  if (owner) {
+    q('#rate').oninput = e => { q('#rv').textContent = e.target.value + '%'; };
+    q('#rate').onchange = e => saveRoom({ secretRate: +e.target.value });
+    q('#price').onchange = e => { saveRoom({ price: Math.max(0, +e.target.value || 0) }); renderAll(); };
+  }
+  const msg = q('#confirmMsg');
+  const ask = (kind, text, fn) => {
+    if (pendingReset === kind) { pendingReset = null; fn(); view.stage = 'pack'; renderAll(); toast('リセットしました'); return; }
+    pendingReset = kind; msg.hidden = false; msg.textContent = text;
+  };
+  const wipe = p => Object.assign(p, { inv: {}, shots: {}, pulls: 0, hits: 0, queue: 0, recent: [] });
+  if (my && my.name) q('#resetMine').onclick = () => ask('mine', 'もう一度押すと、自分の開封記録を消します。', () => { wipe(my); saveMe(); });
+  const ra = q('#resetAll');
+  if (ra) ra.onclick = () => ask('all', 'もう一度押すと、部屋の全員の開封記録を消します。', () => { for (const id of Object.keys(players)) { wipe(players[id]); savePlayer(id); } });
+}
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]'); if (!b) return; view.tab = b.dataset.tab; pendingReset = null; renderPanel();
+});
+
+/* ---------- utils ---------- */
+let tt;
+function toast(t) {
+  let d = document.querySelector('.toast');
+  if (!d) { d = document.createElement('div'); d.className = 'toast'; d.setAttribute('role', 'status'); document.body.appendChild(d); }
+  d.textContent = t; clearTimeout(tt); tt = setTimeout(() => d.remove(), 2600);
+}
+function copy(text, done) {
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast(done)).catch(() => toast(text));
+}
+function renderAll() {
+  if (mode === 'loading') return;
+  renderTop(); renderStage();
+  const panel = $('panel');
+  if (view.tab !== 'set' || !panel.contains(document.activeElement)) renderPanel();
+}
+setInterval(() => { if (view.tab === 'rank') renderPanel(); }, 30000);
+
+boot();
+})();

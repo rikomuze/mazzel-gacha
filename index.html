@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>推しガチャ開封所</title>
+  <meta name="description" content="銀袋を切って開けるMAZZELアー写カードのランダム開封ごっこ。友達と同じ部屋で自引きを競えます。">
+  <meta property="og:title" content="推しガチャ開封所">
+  <meta property="og:description" content="銀袋を切って開けるMAZZELアー写カードのランダム開封ごっこ。友達と同じ部屋で自引きを競えます。">
+  <meta property="og:image" content="photos/group/01.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="site-head">
+    <a class="sticker" href="https://rikomuze.github.io/muze-tool-box/"><b>Muze Tool Box</b> <span>♡</span></a>
+    <nav class="tool-nav" aria-label="MUZE TOOL BOX 共通ナビ">
+      <a href="https://rikomuze.github.io/muze-tool-box/">MUZE TOOL BOXのトップ</a>
+      <a href="./" class="active" aria-current="page">推しガチャ開封所</a>
+      <a href="https://rikomuze.github.io/mazzel-best-visual/">アー写編９マス</a>
+      <a href="https://rikomuze.github.io/mazzel-best-visual-performance/">パフォ衣装編９マス</a>
+      <a href="https://rikomuze.github.io/oshi-visual-6/">推しビジュ6選</a>
+      <a href="https://rikomuze.github.io/otaku-numa-shindan/">オタクタイプ診断</a>
+    </nav>
+  </header>
+  <section>
+    <h1>推し<em>ガチャ</em>開封所</h1>
+    <p class="sub">銀袋を切って開けるMAZZELアー写カードのランダム開封ごっこ。部屋を作ってリンクを送ると、友達がそれぞれのスマホから参加できます。誰が自引きできるか、交換できるダブりはあるか、全員の結果がリアルタイムで並びます。</p>
+  </section>
+
+  <div class="banner" id="banner" hidden></div>
+  <div class="roombar" id="roombar" hidden></div>
+  <div class="players" id="players"></div>
+  <section class="stage" id="stage" aria-live="polite"><p class="empty">開封所を準備しています…</p></section>
+
+  <div class="tabs" role="tablist" id="tabs" hidden>
+    <button role="tab" aria-selected="true" data-tab="rank">みんなの結果</button>
+    <button role="tab" aria-selected="false" data-tab="coll">コレクション</button>
+    <button role="tab" aria-selected="false" data-tab="set">設定</button>
+  </div>
+  <section class="panel" id="panel" hidden></section>
+  <p class="credit">ファンによる非公式の遊びツールです。</p>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="assets/firebase-config.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

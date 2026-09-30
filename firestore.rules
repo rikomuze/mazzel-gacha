@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 部屋: 誰でも読める / 作った人（owner）だけが設定を変えられる
+    match /rooms/{code} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && code.matches('^[A-Z0-9]{6}$')
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.keys().hasOnly(['owner', 'price', 'secretRate', 'createdAt']);
+      allow update: if request.auth != null
+        && resource.data.owner == request.auth.uid
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.secretRate is number
+        && request.resource.data.secretRate >= 0 && request.resource.data.secretRate <= 20
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0 && request.resource.data.price <= 100000;
+      allow delete: if false;
+
+      // 参加者: 誰でも読める / 自分のドキュメントだけ書ける（部屋を作った人は全員分をリセットできる）
+      match /players/{uid} {
+        allow read: if true;
+        allow create, update: if request.auth != null
+          && (request.auth.uid == uid
+              || get(/databases/$(database)/documents/rooms/$(code)).data.owner == request.auth.uid)
+          && request.resource.data.keys().hasOnly(['name', 'oshi', 'inv', 'shots', 'pulls', 'hits', 'queue', 'recent'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 12
+          && request.resource.data.recent.size() <= 15;
+        allow delete: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
+}
