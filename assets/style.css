@@ -113,10 +113,6 @@ h1 em{font-style:normal;border-bottom:3px solid var(--tape-mint)}
 .pl-h span{font-size:.75rem;color:var(--faded)}
 .glabel{font-size:.7rem;letter-spacing:.12em;color:var(--faded)}
 
-.trades{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
-.trades li{font-size:.88rem;padding:8px 10px;border:var(--dash)}
-.trades li.match{border:1.5px solid var(--good)}
-.trades li b.tag{font-size:.72rem;color:var(--good);margin-right:6px}
 
 .row{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center}
 .row input[type=text],.row select{min-width:0;width:100%;padding:8px;border:1px solid var(--line);border-radius:2px;background:var(--desk);color:var(--pencil);font:inherit;font-size:.9rem}
@@ -169,7 +165,6 @@ label.up input{display:none}
 .steps li::before{content:counter(st);grid-row:span 2;font-family:var(--hand);font-weight:600;font-size:1.4rem;color:var(--berry);line-height:1}
 .steps b{font-size:.95rem}
 .steps span{font-size:.86rem;color:var(--faded);line-height:1.7}
-.facts{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;font-size:.86rem;color:var(--faded);line-height:1.7}
 
 /* card list modal */
 button.mini{display:block;width:100%;cursor:pointer;font:inherit;text-align:left;transition:transform .15s}

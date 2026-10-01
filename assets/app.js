@@ -39,7 +39,6 @@ let authError = null;
 const mine = () => players[me];
 const cnt = (p, id) => (p && p.inv && p.inv[id]) || 0;
 const got = (p, id) => (p && p.shots && Array.isArray(p.shots[id])) ? p.shots[id] : [];
-const spare = (p, id) => cnt(p, id) - (p && p.oshi === id ? 1 : 0);
 const isOwner = () => mode === 'local' || roomDoc.owner === me;
 function normPlayer(d) {
   const p = { name: '', oshi: '', inv: {}, shots: {}, pulls: 0, hits: 0, queue: 0, recent: [], ...d };
@@ -302,8 +301,7 @@ function tear() {
   else view.verdict = c > 1 ? `${m.name}（${c}枚目）` : `${m.name}、はじめまして`;
   const n = got(p, m.id).length, tot = m.shots.length;
   const shotNote = isNew ? `新しいアー写！ ${m.name}のアー写 ${n}/${tot}` : `持っているアー写（${n}/${tot}）`;
-  const wants = Object.entries(players).filter(([id, q]) => id !== me && q.name && q.oshi === m.id).map(([, q]) => q.name);
-  view.note = [shotNote, (!hit && wants.length) ? `${wants.join('・')}の推し。交換に出せます` : ''].filter(Boolean).join('　');
+  view.note = shotNote;
   saveMe();
   setTimeout(() => { tearing = false; view.stage = 'reveal'; renderAll(); }, 450);
 }
@@ -328,17 +326,6 @@ $('stage').addEventListener('click', e => {
 });
 
 /* ---------- panels ---------- */
-function trades() {
-  const out = [], ps = Object.values(players).filter(p => p.name);
-  const gives = (a, b) => (b.oshi && spare(a, b.oshi) >= 1) ? M(b.oshi)?.name : null;
-  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
-    const a = ps[i], b = ps[j], ag = gives(a, b), bg = gives(b, a);
-    if (ag && bg && a.oshi !== b.oshi) out.push({ m: true, t: `${a.name}の${ag} ⇄ ${b.name}の${bg}` });
-    else if (ag) out.push({ m: false, t: `${a.name} → ${b.name}：${ag}を譲れます` });
-    else if (bg) out.push({ m: false, t: `${b.name} → ${a.name}：${bg}を譲れます` });
-  }
-  return out;
-}
 function ago(t) { const s = Math.max(0, (Date.now() - t) / 1000 | 0); return s < 60 ? `${s}秒前` : s < 3600 ? `${s / 60 | 0}分前` : `${s / 3600 | 0}時間前`; }
 function renderPanel() {
   if (mode !== 'room' && mode !== 'local') return;
@@ -348,7 +335,7 @@ function renderPanel() {
   if (view.tab === 'rank') {
     const r = ps.map(([, p]) => p).sort((a, b) => b.hits - a.hits || a.pulls - b.pulls);
     const feed = ps.flatMap(([, p]) => p.recent.map(x => ({ ...x, who: p.name }))).sort((a, b) => b.t - a.t).slice(0, 8);
-    const tr = trades(), my = mine();
+    const my = mine();
     el.innerHTML = `<h2>自引きランキング</h2>
       ${r.length ? `<ol class="rank">${r.map((p, i) => `<li><span class="n">${i + 1}</span><span>${esc(p.name)}</span>
         <span class="v">自引き${p.hits} / ${p.pulls}袋 ・ ${yen(p.pulls * roomDoc.price)}</span></li>`).join('')}</ol>`
@@ -358,9 +345,6 @@ function renderPanel() {
         return `<li class="${f.hit ? 'hit' : ''}"><i>${src ? `<img src="${esc(src)}" alt="" loading="lazy">` : ''}</i>
         <span>${esc(f.who)}：${esc(m?.name || '')}${f.hit ? ' 自引き！' : m?.secret ? ' シークレット' : ''}</span><time>${ago(f.t)}</time></li>`; }).join('')}</ul>`
         : '<p class="hint">袋が開くと、誰が何を引いたかがここに流れます。</p>'}
-      <h2>交換できそうな組み合わせ</h2>
-      ${tr.length ? `<ul class="trades">${tr.map(t => `<li class="${t.m ? 'match' : ''}">${t.m ? '<b class="tag">成立</b>' : ''}${esc(t.t)}</li>`).join('')}</ul>`
-        : '<p class="hint">誰かが他の人の推しを引くと、ここに出ます。</p>'}
       ${my && my.name ? `<button class="btn ghost" id="share">自分の結果をコピー</button>` : ''}`;
     const sh = $('share');
     if (sh) sh.onclick = () => {
