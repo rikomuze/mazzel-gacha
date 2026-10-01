@@ -27,11 +27,12 @@ const SECRETS = MEMBERS.filter(m => m.secret);
 const SHOT_TOTAL = MEMBERS.reduce((s, m) => s + m.shots.length, 0);
 
 /* ---------- state ---------- */
-let mode = 'loading';            // loading | lobby | room | local
-let fdb = null, me = null, room = null, unsub = [];
+let mode = 'loading';            // loading | start（遊び方を選ぶ） | friends（開封所を作る・入る） | room | local（ひとりで）
+let fdb = null, me = null, uid = null, room = null, unsub = [];
+let fbReady = Promise.resolve(false); // 共有サーバーにつながったら true
 let roomDoc = { owner: null, price: 550, secretRate: 3 };
 let players = {};
-let view = { stage: 'pack', last: null, shot: 0, verdict: '', note: '', hit: false, fresh: false, tab: 'rank', joinedAt: Date.now() };
+let view = { stage: 'pack', last: null, shot: 0, verdict: '', note: '', hit: false, fresh: false, tab: 'rank', joinedAt: Date.now(), inviting: false };
 let pendingReset = null;
 let authError = null;
 let tearing = false; // 袋を開けている途中（演出中）
@@ -74,52 +75,73 @@ function saveRoom(patch) {
   queueWrite(() => roomRef().update(patch));
 }
 
-/* ---------- boot ---------- */
+/* ---------- boot / 画面の切り替え ---------- */
+// 画面はURLで決まる：なし=最初の画面、?play=solo=ひとりで、?play=friends=お友達と、?room=コード=開封所
+// （スマホの「戻る」でひとつ前の画面に戻れるように、移動は pushState で記録する）
 const CODE_RE = /^[A-Z0-9]{6}$/;
-function roomFromUrl() {
-  const c = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
-  return CODE_RE.test(c) ? c : null;
-}
-async function boot() {
+function boot() {
   const cfg = window.FIREBASE_CONFIG || {};
-  if (!window.firebase || !cfg.apiKey) {
-    mode = 'local'; loadLocal(); renderAll(); return;
+  if (window.firebase && cfg.apiKey) {
+    fbReady = (async () => {
+      try {
+        firebase.initializeApp(cfg);
+        const cred = await firebase.auth().signInAnonymously();
+        uid = cred.user.uid; fdb = firebase.firestore(); return true;
+      } catch (e) { console.error(e); authError = e && e.code || 'unknown'; return false; }
+    })();
+    fbReady.then(() => { if (mode === 'friends') renderAll(); });
+  } else authError = 'no-config';
+  window.addEventListener('popstate', route);
+  route();
+}
+function go(params, replace) {
+  const u = new URL(location.href); u.search = new URLSearchParams(params).toString(); u.hash = location.hash;
+  history[replace ? 'replaceState' : 'pushState'](null, '', u);
+  route();
+}
+function leaveRoom() { unsub.forEach(u => u()); unsub = []; room = null; }
+function resetView() { Object.assign(view, { stage: 'pack', last: null, hit: false, fresh: false, tab: 'rank', inviting: false }); }
+async function route() {
+  const q = new URLSearchParams(location.search);
+  const code = (q.get('room') || '').toUpperCase(), play = q.get('play');
+  if (CODE_RE.test(code)) {
+    if (mode === 'room' && room === code) return;
+    leaveRoom(); mode = 'loading'; renderAll();
+    if (!(await fbReady)) { go({ play: 'friends' }, true); toast('共有サーバーにつながらないため、開封所に入れませんでした'); return; }
+    enterRoom(code); return;
   }
-  try {
-    firebase.initializeApp(cfg);
-    const cred = await firebase.auth().signInAnonymously();
-    me = cred.user.uid;
-    fdb = firebase.firestore();
-  } catch (e) {
-    console.error(e); mode = 'local'; loadLocal(); authError = e && e.code || 'unknown';
-    renderAll(); return;
-  }
-  const code = roomFromUrl();
-  if (code) enterRoom(code); else { mode = 'lobby'; renderAll(); }
+  leaveRoom(); resetView();
+  if (play === 'solo') { mode = 'local'; loadLocal(); }
+  else if (play === 'friends') { mode = 'friends'; players = {}; }
+  else { mode = 'start'; players = {}; }
+  renderAll(); window.scrollTo(0, 0);
 }
 async function enterRoom(code) {
-  unsub.forEach(u => u()); unsub = [];
-  room = code; players = {}; view.joinedAt = Date.now();
+  leaveRoom(); resetView();
+  room = code; me = uid; players = {}; view.joinedAt = Date.now();
   const snap = await fdb.collection('rooms').doc(code).get().catch(() => null);
+  if (room !== code) return; // 待っている間に別の画面へ移った
   if (!snap || !snap.exists) {
-    room = null; mode = 'lobby';
-    const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState(null, '', u);
-    renderAll();
+    room = null; go({ play: 'friends' }, true);
     toast(`開封所「${code}」が見つかりません。コードを確かめてください`); return;
   }
   try { localStorage.setItem('oshigacha-last-room', code); } catch (e) {}
-  const url = new URL(location.href); url.searchParams.set('room', code); history.replaceState(null, '', url);
+  roomDoc = { owner: null, price: 550, secretRate: 3, ...snap.data() };
   mode = 'room';
+  // 作った本人がまだ参加していなければ、参加のあとに「お友達を招待しよう」画面を出す
+  view.inviting = roomDoc.owner === me;
   unsub.push(roomRef().onSnapshot(s => { if (s.exists) roomDoc = { ...roomDoc, ...s.data() }; renderAll(); }, dead));
   unsub.push(roomRef().collection('players').onSnapshot(s => {
     const next = {}; s.forEach(d => { next[d.id] = normPlayer(d.data()); });
     // keep my optimistic local copy while my own writes are pending
     if (players[me] && s.metadata.hasPendingWrites) next[me] = players[me];
+    if (view.inviting && next[me]?.pulls > 0) view.inviting = false; // もう開け始めている人には招待画面を出さない
     announce(next); players = next; renderAll();
   }, dead));
-  renderAll();
+  renderAll(); window.scrollTo(0, 0);
 }
 async function createRoom() {
+  if (!(await fbReady)) { toast('共有サーバーにつながりません'); return; }
   const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   for (let tries = 0; tries < 5; tries++) {
     const code = Array.from({length:6}, () => abc[Math.floor(Math.random() * abc.length)]).join('');
@@ -127,8 +149,8 @@ async function createRoom() {
     const ex = await ref.get().catch(() => null);
     if (ex && ex.exists) continue;
     try {
-      await ref.set({ owner: me, price: 550, secretRate: 3, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-      await enterRoom(code); return;
+      await ref.set({ owner: uid, price: 550, secretRate: 3, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      go({ room: code }); return;
     } catch (e) { console.error(e); toast('開封所を作れませんでした。時間をおいて試してください'); return; }
   }
   toast('開封所を作れませんでした。もう一度押してください');
@@ -161,7 +183,7 @@ function draw() {
 /* ---------- top rows ---------- */
 function renderTop() {
   const b = $('banner');
-  if (mode === 'local') {
+  if (false) { // ひとりで遊ぶのは自分で選んだモードなので、お知らせは出さない（つながらない理由は「お友達と」の画面に出す）
     b.hidden = false;
     const why = {
       'auth/operation-not-allowed': 'Firebaseで匿名ログインが有効になっていません（Authentication → ログイン方法 → 匿名）。',
@@ -178,41 +200,129 @@ function renderTop() {
   }
   else b.hidden = true;
 
+  // 上の細いバー：いまどのモードで遊んでいるか＋移動先
   const rb = $('roombar');
+  const p = mine(), joined = !!(p && p.name);
   if (mode === 'room') {
     rb.hidden = false;
-    // 大きな招待欄は「開封所を作った人が、まだ1人のとき」だけ。招待リンクから入った人には小さい欄を出す。
-    const big = isOwner() && Object.values(players).filter(p => p.name).length <= 1;
-    rb.innerHTML = big ? `
-      <div class="invite alone">
-        <div class="invite-t"><b>お友達はここから招待してね</b><span>下のリンクをLINEやDMで送ると、同じ開封所に入れます。1人で遊ぶときはそのままでOK。</span></div>
-        <div class="invite-row"><code id="inviteUrl">${esc(location.href)}</code><button class="btn" id="copyLink">招待リンクをコピー</button></div>
-        <div class="invite-foot"><span>開封所コード <b>${esc(room)}</b></span><button class="linkbtn" id="leave">この開封所を出る</button></div>
-      </div>` : `
-      <div class="invite compact">
-        <span class="invite-c">開封所コード <b>${esc(room)}</b></span>
-        <button class="btn ghost" id="copyLink">お友達を招待（リンクをコピー）</button>
-        <button class="linkbtn" id="leave">出る</button>
+    rb.innerHTML = `<div class="invite compact">
+        <span class="invite-c">開封所 <b>${esc(room)}</b></span>
+        ${joined && !view.inviting ? '<button class="btn ghost" id="openInvite">お友達を招待</button>' : ''}
+        <button class="linkbtn" data-go="start">出る</button>
       </div>`;
-    $('copyLink').onclick = () => copy(location.href, '招待リンクをコピーしました');
-    $('leave').onclick = () => { unsub.forEach(u => u()); unsub = []; room = null; players = {}; mode = 'lobby';
-      const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState(null, '', url); renderAll(); };
-  } else rb.hidden = true;
+    const oi = $('openInvite'); if (oi) oi.onclick = () => { view.inviting = true; renderAll(); $('stage').scrollIntoView({ block: 'start' }); };
+  } else if (mode === 'local' && joined) {
+    rb.hidden = false;
+    rb.innerHTML = `<div class="invite compact">
+        <span class="invite-c"><b class="solo">ひとりで開封中</b></span>
+        <button class="linkbtn" data-go="friends">お友達と遊ぶ</button>
+        <button class="linkbtn" data-go="start">最初の画面へ</button>
+      </div>`;
+  } else { rb.hidden = true; rb.innerHTML = ''; }
 
-  const ids = Object.keys(players).filter(id => players[id].name)
+  const ids = mode !== 'room' || view.inviting ? [] : Object.keys(players).filter(id => players[id].name)
     .sort((a, b) => (a === me ? -1 : b === me ? 1 : 0) || (players[b].pulls - players[a].pulls));
   $('players').innerHTML = ids.map(id => {
     const p = players[id], o = M(p.oshi);
     return `<div class="pchip ${id === me ? 'me on' : ''}"><span class="dot">${o ? `<img src="${esc(o.shots[0])}" alt="">` : '?'}</span>${esc(p.name)}${id === me ? '（自分）' : ''} <small>${p.pulls}袋</small></div>`;
   }).join('');
 
-  const inRoom = mode === 'room' || mode === 'local';
-  $('guide').hidden = mode !== 'lobby';
+  // 結果・コレクション・設定のタブは、参加して袋を開けられる状態になってから出す
+  const playing = (mode === 'room' || mode === 'local') && joined && !view.inviting;
+  $('guide').hidden = mode !== 'start';
   document.body.dataset.mode = mode;
-  $('tabs').hidden = !inRoom; $('panel').hidden = !inRoom;
+  $('tabs').hidden = !playing; $('panel').hidden = !playing;
+  const rt = document.querySelector('#tabs [data-tab="rank"]'); if (rt) rt.textContent = mode === 'local' ? '開封の記録' : 'みんなの結果';
 }
 
 /* ---------- stage ---------- */
+// 推しを写真で選ぶボタンの並び
+function oshiPicker(sel) {
+  return `<div class="oshi-pick" role="radiogroup" aria-label="推し">${NORMALS.map(m =>
+    `<button type="button" role="radio" aria-checked="${m.id === sel}" data-oshi="${m.id}"><img src="${esc(m.shots[0])}" alt=""><span>${esc(m.name)}</span></button>`).join('')}</div>`;
+}
+function bindPicker(form) {
+  form.querySelectorAll('[data-oshi]').forEach(b => b.onclick = () => {
+    form.querySelectorAll('[data-oshi]').forEach(x => x.setAttribute('aria-checked', x === b));
+    form.dataset.oshi = b.dataset.oshi; const sb = form.querySelector('[type=submit]'); if (sb) sb.disabled = false;
+  });
+}
+// 最初の画面：ひとりで / お友達と
+function renderStart() {
+  let solo = null; try { solo = JSON.parse(localStorage.getItem(LKEY))?.me; } catch (e) {}
+  const cont = solo && solo.oshi && solo.pulls ? `<small>つづきから：${esc(M(solo.oshi)?.name || '')}推し ・ ${solo.pulls}袋開封ずみ</small>` : '';
+  setStage(`<div class="start">
+    <h2>どうやって遊ぶ？</h2>
+    <button class="choice" data-go="solo"><span class="ic" aria-hidden="true">1</span><b>ひとりで開ける</b>
+      <span>この端末だけで、自分のペースでアー写を集める。</span>${cont}</button>
+    <button class="choice" data-go="friends"><span class="ic two" aria-hidden="true">2+</span><b>お友達と開ける</b>
+      <span>開封所を作って招待リンクを送ると、それぞれのスマホから参加できて、みんなの開封結果がリアルタイムで並ぶ。</span></button>
+  </div>`, true);
+}
+// お友達と：開封所を作る / コードで入る
+function renderFriends() {
+  let last = null; try { last = localStorage.getItem('oshigacha-last-room'); } catch (e) {}
+  const down = authError && authError !== 'no-config' ? authError : null;
+  setStage(`<div class="lobby">
+    <h2>お友達と開ける</h2>
+    ${authError ? `<p class="warn">共有サーバーにつながらないため、いまはお友達と遊べません。${authError === 'no-config' ? '' : `<br><small>${esc(down)}</small>`}</p>
+      <button class="btn" data-go="solo">ひとりで開ける</button>` : `
+    <div class="opt"><b>開封所を作る</b><span>あなたが開封所を作って、お友達を招待します。</span>
+      <button class="btn" id="mk">開封所を作る</button></div>
+    <div class="opt"><b>招待された人</b><span>招待リンクを開けば、そのまま入れます。開封所コードで入るときはこちら。</span>
+      <form id="joinCode"><input id="code" maxlength="6" placeholder="ABC123" aria-label="開封所コード" autocomplete="off"><button class="btn" type="submit">入る</button></form>
+      ${last ? `<button class="linkbtn" data-room="${esc(last)}">前回の開封所（${esc(last)}）にもどる</button>` : ''}</div>`}
+    <button class="linkbtn" data-go="start">← 最初の画面にもどる</button>
+  </div>`, true);
+  if (authError) return;
+  $('mk').onclick = e => { const b = e.currentTarget; b.disabled = true; b.textContent = '作っています…'; createRoom().finally(() => { if (b.isConnected) { b.disabled = false; b.textContent = '開封所を作る'; } }); };
+  $('joinCode').onsubmit = e => {
+    e.preventDefault(); const c = $('code').value.trim().toUpperCase();
+    if (!CODE_RE.test(c)) { toast('開封所コードは英数字6文字です'); return; }
+    go({ room: c });
+  };
+  const lb = document.querySelector('[data-room]'); if (lb) lb.onclick = () => go({ room: lb.dataset.room });
+}
+// 参加：ひとりなら推しだけ、お友達となら名前＋推し
+function renderJoin() {
+  const solo = mode === 'local', owner = isOwner();
+  const host = players[roomDoc.owner]?.name;
+  const head = solo ? `<h2>推しはだれ？</h2><p class="hint">推しのカードが出たら「自引き」です。箱推しの人も、いちばんの1人を選んでね。</p>`
+    : owner ? `<p class="step">開封所ができました！</p><h2>名前と推しを決めよう</h2><p class="hint">次の画面で、お友達を招待できます。</p>`
+    : `<p class="step">${host ? `${esc(host)}さんの` : ''}開封所に招待されました</p><h2>名前と推しを決めて参加</h2>`;
+  setStage(`<form class="join" id="joinForm">${head}
+    ${solo ? '' : '<label for="jn">ニックネーム<input type="text" id="jn" maxlength="12" required placeholder="例：みー" autocomplete="nickname"></label>'}
+    <div class="field"><span class="lbl">推し</span>${oshiPicker('')}</div>
+    <button class="btn" type="submit" disabled>${solo ? 'この推しではじめる' : owner ? '次へ' : '参加する'}</button>
+    ${solo ? '<button type="button" class="linkbtn" data-go="start">← 最初の画面にもどる</button>' : ''}</form>`, true);
+  const f = $('joinForm'); bindPicker(f);
+  f.onsubmit = e => {
+    e.preventDefault(); if (!f.dataset.oshi) { toast('推しを選んでください'); return; }
+    const n = solo ? 'わたし' : $('jn').value.trim(); if (!n) return;
+    const prev = mine() || {};
+    players[me] = normPlayer({ ...prev, name: n, oshi: f.dataset.oshi }); saveMe(); renderAll(); window.scrollTo(0, 0);
+  };
+}
+// 開封所を作った人：お友達を招待しよう
+function renderInvite() {
+  const url = location.origin + location.pathname + '?room=' + room;
+  const others = Object.entries(players).filter(([id, p]) => p.name && id !== me);
+  setStage(`<div class="lobby invite-step">
+    <p class="step">開封所 <b>${esc(room)}</b></p>
+    <h2>お友達を招待しよう</h2>
+    <p class="hint">このリンクをLINEやDMで送ってね。開くだけで、同じ開封所に入れます。</p>
+    <code class="url">${esc(url)}</code>
+    <div class="actions">${navigator.share ? '<button class="btn" id="shareLink">招待リンクを送る</button>' : ''}<button class="btn ${navigator.share ? 'ghost' : ''}" id="copyInvite">リンクをコピー</button></div>
+    <div class="joined"><span class="lbl">参加中</span>${[me, ...others.map(([id]) => id)].map(id => { const q = players[id], o = M(q?.oshi);
+      return q ? `<span class="pchip ${id === me ? 'me on' : ''}"><span class="dot">${o ? `<img src="${esc(o.shots[0])}" alt="">` : ''}</span>${esc(q.name)}${id === me ? '（自分）' : ''}</span>` : ''; }).join('')}
+      ${others.length ? '' : '<span class="wait">お友達を待っています…</span>'}</div>
+    <button class="btn big" data-act="start">${others.length ? 'みんなで開封をはじめる' : '開封をはじめる'}</button>
+    <p class="hint">はじめたあとも、上の「お友達を招待」からいつでも呼べます。</p>
+  </div>`, true);
+  $('copyInvite').onclick = () => copy(url, '招待リンクをコピーしました');
+  const sh = $('shareLink');
+  if (sh) sh.onclick = () => navigator.share({ title: '推しガチャ開封所', text: 'MAZZELの推しガチャ、一緒に開けよう！', url }).catch(() => {});
+}
 function packHTML(empty, extra = '') {
   return `<div class="pack ${empty ? 'empty' : ''} ${extra}" id="pack" ${empty ? '' : 'role="button" tabindex="0" aria-label="袋を開ける"'}>
     <div class="strip" id="strip"><span class="cut" id="cut"></span>✂ ここから切って開けてね →</div>
@@ -226,39 +336,13 @@ function setStage(html, cache) {
   st.innerHTML = html; return true;
 }
 function renderStage() {
-  if (mode === 'loading') return;
+  if (mode === 'loading') { setStage('<p class="empty">開封所に入っています…</p>'); return; }
   if (tearing) return; // 開封の演出中は、自分の保存やお友達の更新で袋を描き直さない
-  if (mode === 'lobby') {
-    let last = null; try { last = localStorage.getItem('oshigacha-last-room'); } catch (e) {}
-    setStage(`<div class="lobby">
-      <h2>開封所を作る</h2>
-      <button class="btn" id="mk">新しい開封所を作る</button>
-      <p class="hint">作ったあとに出てくる招待リンクを送ると、お友達が同じ開封所に入れます。</p>
-      <div class="or">開封所コードを持っている人</div>
-      <form id="joinCode"><input id="code" maxlength="6" placeholder="ABC123" aria-label="開封所コード" value="${esc(last || '')}" autocomplete="off"><button class="btn" type="submit">入る</button></form>
-    </div>`);
-    $('mk').onclick = e => { e.target.disabled = true; createRoom().finally(() => { if ($('mk')) $('mk').disabled = false; }); };
-    $('joinCode').onsubmit = e => {
-      e.preventDefault(); const c = $('code').value.trim().toUpperCase();
-      if (!CODE_RE.test(c)) { toast('開封所コードは英数字6文字です'); return; }
-      enterRoom(c);
-    };
-    return;
-  }
+  if (mode === 'start') { renderStart(); return; }
+  if (mode === 'friends') { renderFriends(); return; }
   const p = mine();
-  if (!p || !p.name) {
-    setStage(`<form class="join" id="joinForm">
-      <h2>開封所に参加</h2>
-      <label for="jn">ニックネーム<input type="text" id="jn" maxlength="12" required placeholder="例：みー"></label>
-      <label for="jo">推し<select id="jo">${NORMALS.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}</select></label>
-      <p class="hint">自引き判定に使います。箱推しの人も、いちばんの1人を選んでください。</p>
-      <button class="btn" type="submit">参加する</button></form>`);
-    $('joinForm').onsubmit = e => {
-      e.preventDefault(); const n = $('jn').value.trim(); if (!n) return;
-      players[me] = normPlayer({ name: n, oshi: $('jo').value }); saveMe(); renderAll();
-    };
-    return;
-  }
+  if (!p || !p.name) { renderJoin(); return; }
+  if (mode === 'room' && view.inviting) { renderInvite(); return; }
   const o = M(p.oshi), q = p.queue;
   let html = `<div class="turn">推し：<b>${esc(o?.name || 'なし')}</b>　開けた袋 <b>${p.pulls}袋</b></div>`;
   if (view.stage === 'reveal' && view.last) {
@@ -343,6 +427,7 @@ function doAct(act) {
     case 'buy1': p.queue += 1; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
     case 'buy5': p.queue += 5; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
     case 'next': view.stage = 'pack'; break;
+    case 'start': view.inviting = false; window.scrollTo(0, 0); break;
     case 'tear': tear(true); return;
     default: return;
   }
@@ -381,7 +466,15 @@ function renderPanel() {
     const r = ps.map(([, p]) => p).sort((a, b) => b.hits - a.hits || a.pulls - b.pulls);
     const feed = ps.flatMap(([, p]) => p.recent.map(x => ({ ...x, who: p.name }))).sort((a, b) => b.t - a.t).slice(0, 8);
     const my = mine();
-    el.innerHTML = `<h2>自引きランキング</h2>
+    const solo = mode === 'local';
+    el.innerHTML = solo ? `<h2>自分の記録</h2>
+      <p class="mystats"><span><b>${my.pulls}</b>袋</span><span>自引き<b>${my.hits}</b>回</span><span>アー写<b>${shotCount(my)}</b>/${SHOT_TOTAL}</span></p>
+      <h2>さっき開いた袋</h2>
+      ${feed.length ? `<ul class="feed">${feed.map(f => { const m = M(f.m), src = m?.shots[f.s ?? 0];
+        return `<li class="${f.hit ? 'hit' : ''}"><i>${src ? `<img src="${esc(src)}" alt="" loading="lazy">` : ''}</i>
+        <span>${esc(m?.name || '')}${f.hit ? ' 自引き！' : m?.secret ? ' シークレット' : ''}</span><time>${ago(f.t)}</time></li>`; }).join('')}</ul>`
+        : '<p class="hint">袋を開けると、ここに記録されます。</p>'}
+      <button class="btn ghost" id="share">自分の結果をコピー</button>` : `<h2>自引きランキング</h2>
       ${r.length ? `<ol class="rank">${r.map((p, i) => `<li><span class="n">${i + 1}</span><span>${esc(p.name)}</span>
         <span class="v">自引き${p.hits} / ${p.pulls}袋</span></li>`).join('')}</ol>`
         : '<p class="hint">まだ誰も参加していません。上の開封所から参加すると、ここに並びます。</p>'}
@@ -394,7 +487,7 @@ function renderPanel() {
     const sh = $('share');
     if (sh) sh.onclick = () => {
       const o = M(my.oshi);
-      copy(`【推しガチャ開封所】${my.name}（${o?.name || ''}推し）は${my.pulls}袋で自引き${my.hits}回！アー写${shotCount(my)}/${SHOT_TOTAL} #推しガチャ`, 'コピーしました');
+      copy(`【推しガチャ開封所】${solo ? '' : my.name}（${o?.name || ''}推し）は${my.pulls}袋で自引き${my.hits}回！アー写${shotCount(my)}/${SHOT_TOTAL} #推しガチャ`, 'コピーしました');
     };
   } else if (view.tab === 'coll') {
     el.innerHTML = ps.length ? ps.map(([id, p]) => {
@@ -451,8 +544,8 @@ function renderSettings(el) {
   const my = mine(), owner = isOwner();
   el.innerHTML = `
     ${my && my.name ? `<h2>自分</h2>
-    <div class="row" style="grid-template-columns:1fr 1fr">
-      <input type="text" id="myname" value="${esc(my.name)}" maxlength="12" aria-label="ニックネーム">
+    <div class="row" style="grid-template-columns:${mode === 'local' ? '1fr' : '1fr 1fr'}">
+      ${mode === 'local' ? '' : `<input type="text" id="myname" value="${esc(my.name)}" maxlength="12" aria-label="ニックネーム">`}
       <select id="myoshi" aria-label="推し">${NORMALS.map(m => `<option value="${m.id}" ${m.id === my.oshi ? 'selected' : ''}>${esc(m.name)}推し</option>`).join('')}</select></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetMine">自分の開封記録をリセット</button></div>` : ''}
     <h2>パックの設定${mode === 'room' ? '（開封所の全員共通）' : ''}</h2>
@@ -460,10 +553,11 @@ function renderSettings(el) {
     <div class="field"><label for="rate">シークレット排出率：<b id="rv">${roomDoc.secretRate}%</b></label><input type="range" id="rate" min="0" max="20" value="${roomDoc.secretRate}" ${owner ? '' : 'disabled'}></div>
     ${owner && mode === 'room' ? `<h2>開封所を作った人用</h2><div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetAll">全員の開封記録をリセット</button></div>` : ''}
     <p class="hint" id="confirmMsg" hidden></p>
+    ${mode === 'local' ? '<p class="hint">推しを変えると、ここから先の自引き判定が新しい推しになります。</p>' : ''}
     <p class="hint">カードの写真は公式アーティスト写真です（各メンバー18ショット、シークレットは集合写真16ショット）。</p>`;
   const q = s => el.querySelector(s);
   if (my && my.name) {
-    q('#myname').onchange = e => { const v = e.target.value.trim(); if (v) { my.name = v; saveMe(); renderTop(); } };
+    if (q('#myname')) q('#myname').onchange = e => { const v = e.target.value.trim(); if (v) { my.name = v; saveMe(); renderTop(); } };
     q('#myoshi').onchange = e => { my.oshi = e.target.value; saveMe(); renderAll(); };
   }
   if (owner) {
@@ -484,6 +578,13 @@ document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return; view.tab = b.dataset.tab; pendingReset = null; renderPanel();
 });
 
+// 画面の移動ボタン（data-go）
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (!g) return;
+  e.preventDefault(); const t = g.dataset.go;
+  go(t === 'start' ? {} : { play: t });
+});
+
 /* ---------- utils ---------- */
 let tt;
 function toast(t) {
@@ -495,7 +596,7 @@ function copy(text, done) {
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast(done)).catch(() => toast(text));
 }
 function renderAll() {
-  if (mode === 'loading') return;
+  if (mode === 'loading') { $('banner').hidden = $('roombar').hidden = $('guide').hidden = $('tabs').hidden = $('panel').hidden = true; $('players').innerHTML = ''; renderStage(); return; }
   renderTop(); renderStage();
   const panel = $('panel');
   if (view.tab !== 'set' || !panel.contains(document.activeElement)) renderPanel();

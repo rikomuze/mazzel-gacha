@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
-  <link rel="stylesheet" href="assets/style.css?v=20261001d">
+  <link rel="stylesheet" href="assets/style.css?v=20261001f">
 </head>
 <body>
 <div class="wrap">
@@ -35,18 +35,16 @@
   <section class="panel guide" id="guide" hidden aria-labelledby="guide-h">
     <h2 id="guide-h">遊び方</h2>
     <ol class="steps">
-      <li><b>開封所を作る</b><span>「新しい開封所を作る」を押すと、6文字の開封所コードができます。</span></li>
-      <li><b>お友達を招待する（1人でもOK）</b><span>開封所に入ると「お友達はここから招待してね」の欄が出ます。招待リンクをコピーしてLINEやDMで送ってください。お友達は開封所コードを入力しても入れます。</span></li>
-      <li><b>推しを選んで参加</b><span>ニックネームと推しメンを1人選びます。推しが出ると「自引き」です。</span></li>
-      <li><b>袋をもらって開ける</b><span>銀袋の上の切り取り線を、指で左から右へなぞると開きます。なぞるのが難しいときは、袋の下のリンクをタップしてもOK。</span></li>
-      <li><b>みんなで結果を見る</b><span>自引きランキングと、さっき開いた袋が、全員の画面にリアルタイムで並びます。</span></li>
+      <li><b>遊び方を選ぶ</b><span>ひとりでも、お友達とでも。</span></li>
+      <li><b>推しを選ぶ</b><span>推しのカードが出たら「自引き」！</span></li>
+      <li><b>銀袋を切って開ける</b><span>切り取り線を指でなぞって開封。アー写を集めてコンプリートをめざそう。</span></li>
     </ol>
   </section>
 
   <div class="banner" id="banner" hidden></div>
   <div class="roombar" id="roombar" hidden></div>
   <div class="players" id="players"></div>
-  <section class="stage" id="stage" aria-live="polite"><p class="empty">開封所を準備しています…</p></section>
+  <section class="stage" id="stage" aria-live="polite"><p class="empty">読み込み中…</p></section>
 
   <div class="tabs" role="tablist" id="tabs" hidden>
     <button role="tab" aria-selected="true" data-tab="rank">みんなの結果</button>
@@ -60,7 +58,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="assets/firebase-config.js?v=20261001d"></script>
-<script src="assets/app.js?v=20261001d"></script>
+<script src="assets/firebase-config.js?v=20261001f"></script>
+<script src="assets/app.js?v=20261001f"></script>
 </body>
 </html>
