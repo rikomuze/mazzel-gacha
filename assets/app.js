@@ -175,8 +175,9 @@ function renderTop() {
   const rb = $('roombar');
   if (mode === 'room') {
     rb.hidden = false;
-    const alone = Object.values(players).filter(p => p.name).length <= 1;
-    rb.innerHTML = alone ? `
+    // 大きな招待欄は「開封所を作った人が、まだ1人のとき」だけ。招待リンクから入った人には小さい欄を出す。
+    const big = isOwner() && Object.values(players).filter(p => p.name).length <= 1;
+    rb.innerHTML = big ? `
       <div class="invite alone">
         <div class="invite-t"><b>お友達はここから招待してね</b><span>下のリンクをLINEやDMで送ると、同じ開封所に入れます。1人で遊ぶときはそのままでOK。</span></div>
         <div class="invite-row"><code id="inviteUrl">${esc(location.href)}</code><button class="btn" id="copyLink">招待リンクをコピー</button></div>
