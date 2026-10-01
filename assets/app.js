@@ -34,6 +34,7 @@ let players = {};
 let view = { stage: 'pack', last: null, shot: 0, verdict: '', note: '', hit: false, fresh: false, tab: 'rank', joinedAt: Date.now() };
 let pendingReset = null;
 let authError = null;
+let tearing = false; // 袋を開けている途中（演出中）
 
 const mine = () => players[me];
 const cnt = (p, id) => (p && p.inv && p.inv[id]) || 0;
@@ -221,6 +222,7 @@ function setStage(html, cache) {
 }
 function renderStage() {
   if (mode === 'loading') return;
+  if (tearing) return; // 開封の演出中は、自分の保存やお友達の更新で袋を描き直さない
   if (mode === 'lobby') {
     let last = null; try { last = localStorage.getItem('oshigacha-last-room'); } catch (e) {}
     setStage(`<div class="lobby">
@@ -256,8 +258,8 @@ function renderStage() {
   let html = `<div class="turn">推し：<b>${esc(o?.name || 'なし')}</b>　開けた袋 <b>${p.pulls}袋</b></div>`;
   if (view.stage === 'reveal' && view.last) {
     const m = view.last, src = m.shots[view.shot];
-    html += `<div class="slot">${packHTML(false, 'torn gone')}
-      <div class="card ${m.secret ? 'secret' : ''}">
+    html += `<div class="slot ${view.hit ? 'hitfx' : ''}">${view.hit ? '<span class="rays" aria-hidden="true"></span>' : ''}${packHTML(false, 'torn gone')}
+      <div class="card ${m.secret ? 'secret' : ''}">${view.hit ? '<span class="stamp" aria-hidden="true">自引き</span>' : ''}
         <div class="ph">${src ? `<img src="${esc(src)}" alt="${esc(m.name)}のアーティスト写真">` : `<div class="init">${esc(m.name)}</div>`}
           <span class="no">No.${String(m.order + 1 > 90 ? 0 : m.order + 1).padStart(2, '0')}-${String(view.shot + 1).padStart(2, '0')}${m.secret ? ' SECRET' : ''}</span></div>
         <div class="cap"><span class="nm">${esc(m.name)}</span><span class="grp">MAZZEL</span></div>
@@ -292,13 +294,16 @@ function bindTear() {
   strip.addEventListener('pointerup', end); strip.addEventListener('pointercancel', end);
   pack.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tear(); } });
 }
-let tearing = false;
 let tearLockUntil = 0; // 袋をもらった直後の連打で、勝手に開かないようにする
 function tear() {
   const pack = $('pack'), p = mine();
   if (!pack || tearing || !p || p.queue <= 0 || Date.now() < tearLockUntil) return;
-  tearing = true; pack.classList.add('torn');
   const m = draw(), k = Math.floor(Math.random() * m.shots.length), had = got(p, m.id), isNew = !had.includes(k);
+  tearing = true;
+  const willHit = p.oshi === m.id;
+  // 推しのときは、袋が光って震える「溜め」を入れてから開く
+  if (willHit) { pack.classList.add('charge'); try { navigator.vibrate && navigator.vibrate([20, 60, 20, 60, 120]); } catch (e) {} }
+  setTimeout(() => pack.classList.add('torn'), willHit ? 900 : 0);
   p.queue--; p.pulls++; p.inv = { ...p.inv, [m.id]: cnt(p, m.id) + 1 };
   if (isNew) p.shots = { ...p.shots, [m.id]: [...had, k].sort((a, b) => a - b) };
   const c = p.inv[m.id], hit = p.oshi === m.id; if (hit) p.hits++;
@@ -311,16 +316,20 @@ function tear() {
   const shotNote = isNew ? `新しいアー写！ ${m.name}のアー写 ${n}/${tot}` : `持っているアー写（${n}/${tot}）`;
   view.note = shotNote;
   saveMe();
-  setTimeout(() => { tearing = false; view.stage = 'reveal'; renderAll(); }, 450);
+  setTimeout(() => { tearing = false; view.stage = 'reveal'; renderAll(); }, willHit ? 1350 : 450);
 }
 function confetti(host) {
   const box = document.createElement('div'); box.className = 'confetti';
-  for (let i = 0; i < 36; i++) {
+  const colors = ['var(--tape-berry)', 'var(--tape-mint)', '#f2c94c', '#ffffff'];
+  for (let i = 0; i < 70; i++) {
     const s = document.createElement('i'); s.style.left = Math.random() * 100 + '%';
-    if (i % 2) s.style.background = 'var(--tape-mint)';
-    s.style.animationDelay = Math.random() * .4 + 's'; box.appendChild(s);
+    s.style.background = colors[i % colors.length];
+    if (i % 5 === 0) s.className = 'heart';
+    s.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
+    s.style.animationDuration = (1.4 + Math.random() * .9) + 's';
+    s.style.animationDelay = (.55 + Math.random() * .5) + 's'; box.appendChild(s);
   }
-  host.appendChild(box); setTimeout(() => box.remove(), 2200);
+  host.appendChild(box); setTimeout(() => box.remove(), 3400);
 }
 $('stage').addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return; const p = mine(); if (!p) return;
