@@ -148,7 +148,10 @@ function announce(next) {
 }
 
 /* ---------- gacha ---------- */
+// 演出の確認用：アドレスの最後に #oshi を付けて開くと、次の1袋だけ必ず推しが出る
+let forceOshi = location.hash === '#oshi';
 function draw() {
+  if (forceOshi && mine() && M(mine().oshi)) { forceOshi = false; history.replaceState(null, '', location.pathname + location.search); return M(mine().oshi); }
   const pool = (SECRETS.length && Math.random() * 100 < roomDoc.secretRate) ? SECRETS : NORMALS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
