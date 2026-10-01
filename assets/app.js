@@ -10,7 +10,6 @@
 'use strict';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const yen = n => '¥' + Number(n || 0).toLocaleString();
 const $ = id => document.getElementById(id);
 const nums = n => Array.from({length:n}, (_, k) => String(k + 1).padStart(2, '0'));
 
@@ -102,7 +101,9 @@ async function enterRoom(code) {
   room = code; players = {}; view.joinedAt = Date.now();
   const snap = await fdb.collection('rooms').doc(code).get().catch(() => null);
   if (!snap || !snap.exists) {
-    room = null; mode = 'lobby'; renderAll();
+    room = null; mode = 'lobby';
+    const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState(null, '', u);
+    renderAll();
     toast(`開封所「${code}」が見つかりません。コードを確かめてください`); return;
   }
   try { localStorage.setItem('oshigacha-last-room', code); } catch (e) {}
@@ -175,11 +176,16 @@ function renderTop() {
   if (mode === 'room') {
     rb.hidden = false;
     const alone = Object.values(players).filter(p => p.name).length <= 1;
-    rb.innerHTML = `
-      <div class="invite ${alone ? 'alone' : ''}">
+    rb.innerHTML = alone ? `
+      <div class="invite alone">
         <div class="invite-t"><b>お友達はここから招待してね</b><span>下のリンクをLINEやDMで送ると、同じ開封所に入れます。1人で遊ぶときはそのままでOK。</span></div>
         <div class="invite-row"><code id="inviteUrl">${esc(location.href)}</code><button class="btn" id="copyLink">招待リンクをコピー</button></div>
         <div class="invite-foot"><span>開封所コード <b>${esc(room)}</b></span><button class="linkbtn" id="leave">この開封所を出る</button></div>
+      </div>` : `
+      <div class="invite compact">
+        <span class="invite-c">開封所コード <b>${esc(room)}</b></span>
+        <button class="btn ghost" id="copyLink">お友達を招待（リンクをコピー）</button>
+        <button class="linkbtn" id="leave">出る</button>
       </div>`;
     $('copyLink').onclick = () => copy(location.href, '招待リンクをコピーしました');
     $('leave').onclick = () => { unsub.forEach(u => u()); unsub = []; room = null; players = {}; mode = 'lobby';
@@ -261,8 +267,8 @@ function renderStage() {
         `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめてもらう</button>`}</div>`;
   } else if (q > 0) {
     html += `<div class="queue">未開封 ${q}袋</div><div class="slot">${packHTML(false)}</div>
-      <div class="note" style="margin-top:0">上の切り取り線を右へなぞると開きます</div>
-      <div class="actions"><button class="btn ghost" data-act="tear">ボタンで開ける</button></div>`;
+      <div class="note" style="margin-top:0">切り取り線を指で右へなぞると開きます</div>
+      <button class="linkbtn tearlink" data-act="tear">なぞるのが難しいときは、ここをタップ</button>`;
   } else {
     html += `<div class="queue">未開封 0袋</div><div class="slot">${packHTML(true)}</div>
       <div class="actions"><button class="btn" data-act="buy1">1袋もらう</button><button class="btn ghost" data-act="buy5">5袋まとめてもらう</button></div>`;
@@ -286,9 +292,10 @@ function bindTear() {
   pack.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tear(); } });
 }
 let tearing = false;
+let tearLockUntil = 0; // 袋をもらった直後の連打で、勝手に開かないようにする
 function tear() {
   const pack = $('pack'), p = mine();
-  if (!pack || tearing || !p || p.queue <= 0) return;
+  if (!pack || tearing || !p || p.queue <= 0 || Date.now() < tearLockUntil) return;
   tearing = true; pack.classList.add('torn');
   const m = draw(), k = Math.floor(Math.random() * m.shots.length), had = got(p, m.id), isNew = !had.includes(k);
   p.queue--; p.pulls++; p.inv = { ...p.inv, [m.id]: cnt(p, m.id) + 1 };
@@ -317,9 +324,9 @@ function confetti(host) {
 $('stage').addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return; const p = mine(); if (!p) return;
   switch (a.dataset.act) {
-    case 'buy1': p.queue += 1; view.stage = 'pack'; saveMe(); break;
-    case 'buy5': p.queue += 5; view.stage = 'pack'; saveMe(); break;
-    case 'next': view.stage = 'pack'; break;
+    case 'buy1': p.queue += 1; view.stage = 'pack'; tearLockUntil = Date.now() + 700; saveMe(); break;
+    case 'buy5': p.queue += 5; view.stage = 'pack'; tearLockUntil = Date.now() + 700; saveMe(); break;
+    case 'next': view.stage = 'pack'; tearLockUntil = Date.now() + 700; break;
     case 'tear': tear(); return;
   }
   renderAll();
