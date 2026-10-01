@@ -32,11 +32,6 @@
     <p class="sub">銀袋を切って開けるMAZZELアー写カードのランダム開封ごっこ。部屋を作ってリンクを送ると、友達がそれぞれのスマホから参加できます。誰が自引きできるか、交換できるダブりはあるか、全員の結果がリアルタイムで並びます。</p>
   </section>
 
-  <div class="banner" id="banner" hidden></div>
-  <div class="roombar" id="roombar" hidden></div>
-  <div class="players" id="players"></div>
-  <section class="stage" id="stage" aria-live="polite"><p class="empty">開封所を準備しています…</p></section>
-
   <section class="panel guide" id="guide" hidden aria-labelledby="guide-h">
     <h2 id="guide-h">遊び方</h2>
     <ol class="steps">
@@ -50,10 +45,15 @@
     <ul class="facts">
       <li>MAZZEL 8人のアー写カード。メンバーごとに18ショットあって、同じメンバーでも違うアー写が出ます。</li>
       <li>ときどきシークレット「MAZZEL 集合」が出ます（集合写真16ショット）。</li>
-      <li>自分の推しは1枚手元に残し、それ以外のダブりを交換候補として数えます。</li>
+      <li>同じアー写をもう一度引いたらダブりです。交換候補は、自分の推しのカードを1枚残した残りの枚数で数えます。</li>
       <li>「使った額」は遊びの目安です。実際にお金はかかりません。</li>
     </ul>
   </section>
+
+  <div class="banner" id="banner" hidden></div>
+  <div class="roombar" id="roombar" hidden></div>
+  <div class="players" id="players"></div>
+  <section class="stage" id="stage" aria-live="polite"><p class="empty">開封所を準備しています…</p></section>
 
   <div class="tabs" role="tablist" id="tabs" hidden>
     <button role="tab" aria-selected="true" data-tab="rank">みんなの結果</button>

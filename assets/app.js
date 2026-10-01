@@ -363,7 +363,7 @@ function renderPanel() {
   } else if (view.tab === 'coll') {
     el.innerHTML = ps.length ? ps.map(([id, p]) => {
       const own = MEMBERS.filter(m => cnt(p, m.id)).length;
-      const dup = MEMBERS.reduce((s, m) => s + Math.max(0, cnt(p, m.id) - 1), 0);
+      const dup = MEMBERS.reduce((s, m) => s + dupOf(p, m.id), 0);
       return `<div class="pl"><div class="pl-h"><b>${esc(p.name)}${id === me ? '（自分）' : ''}</b><span>${own}/${MEMBERS.length}人 ・ アー写${shotCount(p)}/${SHOT_TOTAL} ・ ダブり${dup}枚</span></div>
       <div class="coll">${MEMBERS.map(m => { const c = cnt(p, m.id); const g = got(p, m.id); const src = m.shots[g[g.length - 1] ?? 0];
         return c ? `<button class="mini" data-open="${esc(id)}" data-mem="${m.id}" aria-label="${esc(p.name)}の${esc(m.name)}のカードを見る"><span class="in"><img src="${esc(src)}" alt="" loading="lazy"></span>
@@ -397,7 +397,7 @@ function renderCards() {
   const g = got(p, m.id), c = cnt(p, m.id), pick = dlgState.pick;
   d.innerHTML = `
     <div class="dlg-head">
-      <div><b>${esc(m.name)}</b><span>${esc(p.name)}${dlgState.pid === me ? '（自分）' : ''}のカード ・ アー写${g.length}/${m.shots.length} ・ ${c}枚引いた</span></div>
+      <div><b>${esc(m.name)}</b><span>${esc(p.name)}${dlgState.pid === me ? '（自分）' : ''}のカード ・ アー写${g.length}/${m.shots.length} ・ ${c}枚引いた（ダブり${dupOf(p, m.id)}枚）</span></div>
       <button class="dlg-x" id="dlgClose" aria-label="閉じる"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
     </div>
     ${pick !== null ? `<figure class="dlg-big"><img src="${esc(m.shots[pick])}" alt="${esc(m.name)}のアー写 No.${pick + 1}"><figcaption>No.${String(pick + 1).padStart(2, '0')}</figcaption></figure>` : ''}
@@ -409,6 +409,8 @@ function renderCards() {
   d.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { dlgState.pick = +b.dataset.k; renderCards(); d.scrollTo({ top: 0, behavior: 'smooth' }); });
 }
 const shotCount = p => MEMBERS.reduce((s, m) => s + got(p, m.id).length, 0);
+// ダブり = 同じアー写をもう一度引いた枚数（引いた枚数 − 集めたアー写の種類）
+const dupOf = (p, mid) => Math.max(0, cnt(p, mid) - got(p, mid).length);
 function renderSettings(el) {
   const my = mine(), owner = isOwner();
   el.innerHTML = `
