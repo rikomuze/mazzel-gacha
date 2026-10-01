@@ -259,6 +259,8 @@ input,select,textarea{font-size:16px!important}
 .mystats{display:flex;gap:16px;margin:0;font-size:.85rem;color:var(--faded)}
 .mystats b{font-family:var(--hand);font-size:1.3rem;color:var(--pencil);margin:0 2px}
 
+.btn.ghost.danger{background:var(--berry);border-color:var(--berry);color:#fff}
+
 /* ---------- 推しが来たときの演出 ---------- */
 .pack.charge{animation:shine 4s linear infinite,quake .09s linear infinite;box-shadow:0 0 0 3px #fff,0 0 28px 8px rgba(242,201,76,.85),0 14px 26px -12px rgba(64,56,47,.5)}
 .pack.charge::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 55%,rgba(255,250,220,.95),rgba(255,250,220,0) 60%);animation:glow .9s ease-in forwards;pointer-events:none}

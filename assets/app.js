@@ -552,7 +552,6 @@ function renderSettings(el) {
     ${owner ? '' : '<p class="hint">開封所を作った人だけが変えられます。</p>'}
     <div class="field"><label for="rate">シークレット排出率：<b id="rv">${roomDoc.secretRate}%</b></label><input type="range" id="rate" min="0" max="20" value="${roomDoc.secretRate}" ${owner ? '' : 'disabled'}></div>
     ${owner && mode === 'room' ? `<h2>開封所を作った人用</h2><div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetAll">全員の開封記録をリセット</button></div>` : ''}
-    <p class="hint" id="confirmMsg" hidden></p>
     ${mode === 'local' ? '<p class="hint">推しを変えると、ここから先の自引き判定が新しい推しになります。</p>' : ''}
     <p class="hint">カードの写真は公式アーティスト写真です（各メンバー18ショット、シークレットは集合写真16ショット）。</p>`;
   const q = s => el.querySelector(s);
@@ -564,15 +563,23 @@ function renderSettings(el) {
     q('#rate').oninput = e => { q('#rv').textContent = e.target.value + '%'; };
     q('#rate').onchange = e => saveRoom({ secretRate: +e.target.value });
   }
-  const msg = q('#confirmMsg');
-  const ask = (kind, text, fn) => {
-    if (pendingReset === kind) { pendingReset = null; fn(); view.stage = 'pack'; renderAll(); toast('リセットしました'); return; }
-    pendingReset = kind; msg.hidden = false; msg.textContent = text;
+  // リセットは2回押し。1回目でボタン自体が「もう一度押すと消えます」に変わる（4秒で元に戻る）
+  let resetTimer = null;
+  const ask = (kind, btn, label, fn) => {
+    clearTimeout(resetTimer);
+    if (pendingReset === kind) {
+      pendingReset = null; fn(); Object.assign(view, { stage: 'pack', last: null, hit: false });
+      renderAll(); renderPanel(); toast('リセットしました'); return;
+    }
+    pendingReset = kind; const orig = btn.textContent;
+    btn.textContent = label; btn.classList.add('danger');
+    resetTimer = setTimeout(() => { if (pendingReset === kind) { pendingReset = null; if (btn.isConnected) { btn.textContent = orig; btn.classList.remove('danger'); } } }, 4000);
   };
   const wipe = p => Object.assign(p, { inv: {}, shots: {}, pulls: 0, hits: 0, queue: 0, recent: [] });
-  if (my && my.name) q('#resetMine').onclick = () => ask('mine', 'もう一度押すと、自分の開封記録を消します。', () => { wipe(my); saveMe(); });
+  const rm = q('#resetMine');
+  if (rm) rm.onclick = () => ask('mine', rm, 'もう一度押すと記録が消えます', () => { wipe(my); saveMe(); });
   const ra = q('#resetAll');
-  if (ra) ra.onclick = () => ask('all', 'もう一度押すと、開封所の全員の開封記録を消します。', () => { for (const id of Object.keys(players)) { wipe(players[id]); savePlayer(id); } });
+  if (ra) ra.onclick = () => ask('all', ra, 'もう一度押すと全員の記録が消えます', () => { for (const id of Object.keys(players)) { wipe(players[id]); savePlayer(id); } });
 }
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return; view.tab = b.dataset.tab; pendingReset = null; renderPanel();
