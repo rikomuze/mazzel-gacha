@@ -204,7 +204,7 @@ function packHTML(empty, extra = '') {
   return `<div class="pack ${empty ? 'empty' : ''} ${extra}" id="pack" ${empty ? '' : 'role="button" tabindex="0" aria-label="袋を開ける"'}>
     <div class="strip" id="strip"><span class="cut" id="cut"></span>✂ ここから切って開けてね →</div>
     <div class="body"><div class="fine">RANDOM ARTIST PHOTO CARD</div><div class="logo">MAZZEL</div>
-    <div class="fine">全${NORMALS.length}種＋シークレット</div><div class="fine">${yen(roomDoc.price)}</div></div></div>`;
+    <div class="fine">全${NORMALS.length}種＋シークレット</div></div></div>`;
 }
 function setStage(html, cache) {
   const st = $('stage');
@@ -246,7 +246,7 @@ function renderStage() {
     return;
   }
   const o = M(p.oshi), q = p.queue;
-  let html = `<div class="turn">推し：<b>${esc(o?.name || 'なし')}</b>　使った額 <b>${yen(p.pulls * roomDoc.price)}</b></div>`;
+  let html = `<div class="turn">推し：<b>${esc(o?.name || 'なし')}</b>　開けた袋 <b>${p.pulls}袋</b></div>`;
   if (view.stage === 'reveal' && view.last) {
     const m = view.last, src = m.shots[view.shot];
     html += `<div class="slot">${packHTML(false, 'torn gone')}
@@ -258,14 +258,14 @@ function renderStage() {
       <div class="verdict ${view.hit ? 'hit' : ''}">${esc(view.verdict)}</div>
       <div class="note">${esc(view.note)}</div>
       <div class="actions">${q > 0 ? `<button class="btn" data-act="next">次の袋へ（残り${q}）</button>` :
-        `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめ買い</button>`}</div>`;
+        `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめてもらう</button>`}</div>`;
   } else if (q > 0) {
     html += `<div class="queue">未開封 ${q}袋</div><div class="slot">${packHTML(false)}</div>
       <div class="note" style="margin-top:0">上の切り取り線を右へなぞると開きます</div>
       <div class="actions"><button class="btn ghost" data-act="tear">ボタンで開ける</button></div>`;
   } else {
     html += `<div class="queue">未開封 0袋</div><div class="slot">${packHTML(true)}</div>
-      <div class="actions"><button class="btn" data-act="buy1">1袋買う ${yen(roomDoc.price)}</button><button class="btn ghost" data-act="buy5">5袋まとめ買い</button></div>`;
+      <div class="actions"><button class="btn" data-act="buy1">1袋もらう</button><button class="btn ghost" data-act="buy5">5袋まとめてもらう</button></div>`;
   }
   if (!setStage(html, true)) return;
   if (view.stage !== 'reveal' && q > 0) bindTear();
@@ -338,7 +338,7 @@ function renderPanel() {
     const my = mine();
     el.innerHTML = `<h2>自引きランキング</h2>
       ${r.length ? `<ol class="rank">${r.map((p, i) => `<li><span class="n">${i + 1}</span><span>${esc(p.name)}</span>
-        <span class="v">自引き${p.hits} / ${p.pulls}袋 ・ ${yen(p.pulls * roomDoc.price)}</span></li>`).join('')}</ol>`
+        <span class="v">自引き${p.hits} / ${p.pulls}袋</span></li>`).join('')}</ol>`
         : '<p class="hint">まだ誰も参加していません。上の開封所から参加すると、ここに並びます。</p>'}
       <h2>さっき開いた袋</h2>
       ${feed.length ? `<ul class="feed">${feed.map(f => { const m = M(f.m), src = m?.shots[f.s ?? 0];
@@ -413,7 +413,6 @@ function renderSettings(el) {
     <h2>パックの設定${mode === 'room' ? '（開封所の全員共通）' : ''}</h2>
     ${owner ? '' : '<p class="hint">開封所を作った人だけが変えられます。</p>'}
     <div class="field"><label for="rate">シークレット排出率：<b id="rv">${roomDoc.secretRate}%</b></label><input type="range" id="rate" min="0" max="20" value="${roomDoc.secretRate}" ${owner ? '' : 'disabled'}></div>
-    <div class="field"><label for="price">1袋の値段（円）</label><input type="number" id="price" min="0" step="10" value="${roomDoc.price}" ${owner ? '' : 'disabled'}></div>
     ${owner && mode === 'room' ? `<h2>開封所を作った人用</h2><div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetAll">全員の開封記録をリセット</button></div>` : ''}
     <p class="hint" id="confirmMsg" hidden></p>
     <p class="hint">カードの写真は公式アーティスト写真です（各メンバー18ショット、シークレットは集合写真16ショット）。</p>`;
@@ -425,7 +424,6 @@ function renderSettings(el) {
   if (owner) {
     q('#rate').oninput = e => { q('#rv').textContent = e.target.value + '%'; };
     q('#rate').onchange = e => saveRoom({ secretRate: +e.target.value });
-    q('#price').onchange = e => { saveRoom({ price: Math.max(0, +e.target.value || 0) }); renderAll(); };
   }
   const msg = q('#confirmMsg');
   const ask = (kind, text, fn) => {
