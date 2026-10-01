@@ -222,21 +222,31 @@ input,select,textarea{font-size:16px!important}
 .pack.charge::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 55%,rgba(255,250,220,.95),rgba(255,250,220,0) 60%);animation:glow .9s ease-in forwards;pointer-events:none}
 @keyframes quake{0%{transform:translate(0,0) rotate(0)}25%{transform:translate(-2px,1px) rotate(-1deg)}50%{transform:translate(2px,-1px) rotate(1deg)}75%{transform:translate(-1px,-1px) rotate(-.5deg)}100%{transform:translate(1px,1px) rotate(.5deg)}}
 @keyframes glow{from{opacity:0}to{opacity:1}}
-.slot.hitfx .rays{position:absolute;left:50%;top:46%;width:560px;height:560px;margin:-280px 0 0 -280px;border-radius:50%;pointer-events:none;
-  background:repeating-conic-gradient(from 0deg,rgba(242,201,76,.38) 0 9deg,rgba(242,201,76,0) 9deg 22deg);
-  -webkit-mask:radial-gradient(circle,#000 18%,transparent 62%);mask:radial-gradient(circle,#000 18%,transparent 62%);
-  animation:rays 14s linear infinite,raysin .6s ease-out both}
-@keyframes rays{to{transform:rotate(360deg)}}
-@keyframes raysin{from{opacity:0;scale:.4}to{opacity:1;scale:1}}
+/* オーロラの光：パステルの色がにじんでゆっくり回る */
+.slot.hitfx .aura{position:absolute;left:50%;top:48%;width:420px;height:420px;margin:-210px 0 0 -210px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from 0deg,#f9c6d6,#fbe7b5,#cfe9df,#d8ccf3,#f6c3e6,#f9c6d6);filter:blur(38px);opacity:.85;
+  animation:auraspin 9s linear infinite,aurain .9s ease-out both}
+.slot.hitfx .aura::after{content:"";position:absolute;inset:22%;border-radius:50%;background:radial-gradient(circle,#fffaf0 0,rgba(255,250,240,0) 70%)}
+@keyframes auraspin{to{transform:rotate(360deg)}}
+@keyframes aurain{from{opacity:0;scale:.3}to{opacity:.85;scale:1}}
+/* きらめき：4方向に光る星がまたたく */
+.glints{position:absolute;inset:0;pointer-events:none;z-index:3}
+.glints i{position:absolute;width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  background:radial-gradient(circle,#fff 0 18%,#fff6d8 30%,rgba(255,240,200,0) 62%);
+  clip-path:polygon(50% 0,58% 42%,100% 50%,58% 58%,50% 100%,42% 58%,0 50%,42% 42%);
+  filter:drop-shadow(0 0 6px rgba(255,226,170,1)) drop-shadow(0 0 2px #fff);animation:twinkle 1.8s ease-in-out infinite both}
+@keyframes twinkle{0%,100%{transform:scale(.15) rotate(0);opacity:0}45%{transform:scale(1) rotate(45deg);opacity:1}70%{transform:scale(.7) rotate(70deg);opacity:.8}}
+/* カード写真の上を、虹色の光がすっと流れる */
+.holo{position:absolute;inset:0;z-index:2;pointer-events:none;mix-blend-mode:soft-light;
+  background:linear-gradient(115deg,transparent 25%,rgba(255,200,230,.9) 40%,rgba(255,250,210,.95) 47%,rgba(190,240,225,.9) 54%,rgba(210,195,255,.85) 61%,transparent 70%) no-repeat;
+  background-size:260% 100%;animation:holo 1.6s .75s ease-in-out both}
+@keyframes holo{from{background-position:120% 0}to{background-position:-60% 0}}
+.slot.hitfx .card{box-shadow:0 0 0 1px rgba(255,255,255,.9),0 0 24px 2px rgba(255,236,200,.75),0 14px 30px -12px rgba(64,56,47,.45)}
 .slot.hitfx .card{animation:flipin .75s cubic-bezier(.2,1.2,.4,1) both;transform-origin:50% 60%}
 @keyframes flipin{0%{transform:perspective(700px) rotateY(90deg) scale(.7);opacity:.2}55%{transform:perspective(700px) rotateY(-12deg) scale(1.06);opacity:1}100%{transform:perspective(700px) rotateY(0) rotate(-1.5deg) scale(1)}}
-.stamp{position:absolute;z-index:3;right:-10px;top:30px;width:78px;height:78px;border-radius:50%;border:3px solid var(--berry);color:var(--berry);background:rgba(255,253,248,.88);
-  display:grid;place-items:center;font-family:var(--hand);font-weight:600;font-size:1.15rem;letter-spacing:.06em;transform:rotate(-14deg);
-  box-shadow:inset 0 0 0 3px rgba(255,253,248,.88),inset 0 0 0 5px var(--berry);animation:stamp .45s .7s cubic-bezier(.3,1.6,.5,1) both}
-@keyframes stamp{from{transform:rotate(-14deg) scale(2.4);opacity:0}to{transform:rotate(-14deg) scale(1);opacity:1}}
 .slot.hitfx ~ .verdict{animation:pop .5s .9s cubic-bezier(.3,1.6,.5,1) both}
 @keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 .confetti i{animation-name:fall2!important}
-.confetti i.heart{width:10px;height:10px;background:var(--berry)!important;clip-path:path("M5 9 L1 5 A2.3 2.3 0 0 1 5 2 A2.3 2.3 0 0 1 9 5 Z")}
+.confetti i.spark{width:11px;height:11px;clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%);filter:drop-shadow(0 0 3px rgba(255,240,200,.9))}
 @keyframes fall2{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx,0),560px) rotate(620deg);opacity:0}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}

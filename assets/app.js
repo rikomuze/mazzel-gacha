@@ -149,6 +149,8 @@ function announce(next) {
 
 /* ---------- gacha ---------- */
 // 演出の確認用：アドレスの最後に #oshi を付けて開くと、次の1袋だけ必ず推しが出る
+// 推しが出たときに、カードの後ろに出すオーロラの光ときらめき
+const GLITTER = '<span class="aura" aria-hidden="true"></span><span class="glints" aria-hidden="true"><i style="left:-34%;top:8%;--s:33px;animation-delay:0.50s"></i><i style="left:118%;top:2%;--s:24px;animation-delay:0.80s"></i><i style="left:-22%;top:52%;--s:18px;animation-delay:1.30s"></i><i style="left:124%;top:40%;--s:36px;animation-delay:0.65s"></i><i style="left:-40%;top:86%;--s:27px;animation-delay:1.00s"></i><i style="left:112%;top:92%;--s:21px;animation-delay:1.45s"></i><i style="left:10%;top:-14%;--s:21px;animation-delay:1.10s"></i><i style="left:78%;top:-12%;--s:30px;animation-delay:0.55s"></i><i style="left:30%;top:108%;--s:18px;animation-delay:1.60s"></i><i style="left:88%;top:106%;--s:27px;animation-delay:0.90s"></i><i style="left:-12%;top:28%;--s:15px;animation-delay:1.80s"></i><i style="left:132%;top:68%;--s:16px;animation-delay:1.20s"></i><i style="left:-30%;top:-4%;--s:14px;animation-delay:1.50s"></i><i style="left:104%;top:-16%;--s:15px;animation-delay:1.70s"></i></span>';
 let forceOshi = location.hash === '#oshi';
 function draw() {
   if (forceOshi && mine() && M(mine().oshi)) { forceOshi = false; history.replaceState(null, '', location.pathname + location.search); return M(mine().oshi); }
@@ -261,9 +263,9 @@ function renderStage() {
   let html = `<div class="turn">推し：<b>${esc(o?.name || 'なし')}</b>　開けた袋 <b>${p.pulls}袋</b></div>`;
   if (view.stage === 'reveal' && view.last) {
     const m = view.last, src = m.shots[view.shot];
-    html += `<div class="slot ${view.hit ? 'hitfx' : ''}">${view.hit ? '<span class="rays" aria-hidden="true"></span>' : ''}${packHTML(false, 'torn gone')}
-      <div class="card ${m.secret ? 'secret' : ''}">${view.hit ? '<span class="stamp" aria-hidden="true">自引き</span>' : ''}
-        <div class="ph">${src ? `<img src="${esc(src)}" alt="${esc(m.name)}のアーティスト写真">` : `<div class="init">${esc(m.name)}</div>`}
+    html += `<div class="slot ${view.hit ? 'hitfx' : ''}">${view.hit ? GLITTER : ''}${packHTML(false, 'torn gone')}
+      <div class="card ${m.secret ? 'secret' : ''}">
+        <div class="ph">${view.hit ? '<span class="holo" aria-hidden="true"></span>' : ''}${src ? `<img src="${esc(src)}" alt="${esc(m.name)}のアーティスト写真">` : `<div class="init">${esc(m.name)}</div>`}
           <span class="no">No.${String(m.order + 1 > 90 ? 0 : m.order + 1).padStart(2, '0')}-${String(view.shot + 1).padStart(2, '0')}${m.secret ? ' SECRET' : ''}</span></div>
         <div class="cap"><span class="nm">${esc(m.name)}</span><span class="grp">MAZZEL</span></div>
       </div></div>
@@ -324,11 +326,11 @@ function tear(fromLink) {
 }
 function confetti(host) {
   const box = document.createElement('div'); box.className = 'confetti';
-  const colors = ['var(--tape-berry)', 'var(--tape-mint)', '#f2c94c', '#ffffff'];
+  const colors = ['#f6d98a', '#ffffff', '#f4b8c8', '#d9c8f0', '#bfe3d6'];
   for (let i = 0; i < 70; i++) {
     const s = document.createElement('i'); s.style.left = Math.random() * 100 + '%';
     s.style.background = colors[i % colors.length];
-    if (i % 5 === 0) s.className = 'heart';
+    if (i % 3 === 0) s.className = 'spark';
     s.style.setProperty('--dx', (Math.random() * 120 - 60) + 'px');
     s.style.animationDuration = (1.4 + Math.random() * .9) + 's';
     s.style.animationDelay = (.55 + Math.random() * .5) + 's'; box.appendChild(s);
