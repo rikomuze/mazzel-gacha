@@ -337,15 +337,37 @@ function confetti(host) {
   }
   host.appendChild(box); setTimeout(() => box.remove(), 3400);
 }
-$('stage').addEventListener('click', e => {
-  const a = e.target.closest('[data-act]'); if (!a) return; const p = mine(); if (!p) return;
-  switch (a.dataset.act) {
+function doAct(act) {
+  const p = mine(); if (!p) return;
+  switch (act) {
     case 'buy1': p.queue += 1; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
     case 'buy5': p.queue += 5; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
     case 'next': view.stage = 'pack'; break;
     case 'tear': tear(true); return;
+    default: return;
   }
   renderAll();
+}
+// スマホでは「指を離した瞬間」に反応させる。
+// iPhoneはスクロールの勢いが残っているときや、押している間に画面が描き直されたときに
+// click が届かず「1回目が効かない」ことがあるため。
+let downAct = null, ghostUntil = 0;
+$('stage').addEventListener('pointerdown', e => {
+  const a = e.target.closest('[data-act]');
+  downAct = a && e.pointerType !== 'mouse' ? { act: a.dataset.act, x: e.clientX, y: e.clientY } : null;
+});
+$('stage').addEventListener('pointerup', e => {
+  const d = downAct; downAct = null; if (!d) return;
+  const a = e.target.closest('[data-act]');
+  if (!a || a.dataset.act !== d.act || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) return;
+  ghostUntil = Date.now() + 600; // このあと遅れて届く click は無視する（次の画面のボタンを押してしまわないように）
+  doAct(d.act);
+});
+$('stage').addEventListener('pointercancel', () => { downAct = null; });
+$('stage').addEventListener('click', e => {
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  if (Date.now() < ghostUntil) return;
+  doAct(a.dataset.act);
 });
 
 /* ---------- panels ---------- */
