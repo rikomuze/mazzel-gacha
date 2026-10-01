@@ -1,5 +1,5 @@
 /* 推しガチャ開封所 — MUZE TOOL BOX
- * Firebase (匿名ログイン + Firestore) で部屋ごとに結果を共有する。
+ * Firebase (匿名ログイン + Firestore) で開封所（rooms）ごとに結果を共有する。
  * 設定が無いときは localStorage だけで動く「ひとりモード」。
  *
  * Firestore:
@@ -104,7 +104,7 @@ async function enterRoom(code) {
   const snap = await fdb.collection('rooms').doc(code).get().catch(() => null);
   if (!snap || !snap.exists) {
     room = null; mode = 'lobby'; renderAll();
-    toast(`部屋「${code}」が見つかりません。コードを確かめてください`); return;
+    toast(`開封所「${code}」が見つかりません。コードを確かめてください`); return;
   }
   try { localStorage.setItem('oshigacha-last-room', code); } catch (e) {}
   const url = new URL(location.href); url.searchParams.set('room', code); history.replaceState(null, '', url);
@@ -128,9 +128,9 @@ async function createRoom() {
     try {
       await ref.set({ owner: me, price: 550, secretRate: 3, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       await enterRoom(code); return;
-    } catch (e) { console.error(e); toast('部屋を作れませんでした。時間をおいて試してください'); return; }
+    } catch (e) { console.error(e); toast('開封所を作れませんでした。時間をおいて試してください'); return; }
   }
-  toast('部屋を作れませんでした。もう一度押してください');
+  toast('開封所を作れませんでした。もう一度押してください');
 }
 function dead(e) { console.error(e); toast('共有データとの接続が切れました。ページを開き直してください'); }
 
@@ -175,7 +175,13 @@ function renderTop() {
   const rb = $('roombar');
   if (mode === 'room') {
     rb.hidden = false;
-    rb.innerHTML = `<span>部屋 <b>${esc(room)}</b></span><span style="display:flex;gap:6px"><button class="btn ghost" id="copyLink">招待リンクをコピー</button><button class="btn ghost" id="leave">部屋を出る</button></span>`;
+    const alone = Object.values(players).filter(p => p.name).length <= 1;
+    rb.innerHTML = `
+      <div class="invite ${alone ? 'alone' : ''}">
+        <div class="invite-t"><b>お友達はここから招待してね</b><span>下のリンクをLINEやDMで送ると、同じ開封所に入れます。1人で遊ぶときはそのままでOK。</span></div>
+        <div class="invite-row"><code id="inviteUrl">${esc(location.href)}</code><button class="btn" id="copyLink">招待リンクをコピー</button></div>
+        <div class="invite-foot"><span>開封所コード <b>${esc(room)}</b></span><button class="linkbtn" id="leave">この開封所を出る</button></div>
+      </div>`;
     $('copyLink').onclick = () => copy(location.href, '招待リンクをコピーしました');
     $('leave').onclick = () => { unsub.forEach(u => u()); unsub = []; room = null; players = {}; mode = 'lobby';
       const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState(null, '', url); renderAll(); };
@@ -190,6 +196,7 @@ function renderTop() {
 
   const inRoom = mode === 'room' || mode === 'local';
   $('guide').hidden = mode !== 'lobby';
+  document.body.dataset.mode = mode;
   $('tabs').hidden = !inRoom; $('panel').hidden = !inRoom;
 }
 
@@ -211,16 +218,16 @@ function renderStage() {
   if (mode === 'lobby') {
     let last = null; try { last = localStorage.getItem('oshigacha-last-room'); } catch (e) {}
     setStage(`<div class="lobby">
-      <h2>部屋を作って友達を呼ぶ</h2>
-      <button class="btn" id="mk">新しい部屋を作る</button>
-      <p class="hint">作った部屋の招待リンクを送ると、友達が同じ部屋に入れます。</p>
-      <div class="or">部屋コードを持っている人</div>
-      <form id="joinCode"><input id="code" maxlength="6" placeholder="ABC123" aria-label="部屋コード" value="${esc(last || '')}" autocomplete="off"><button class="btn" type="submit">入る</button></form>
+      <h2>開封所を作る</h2>
+      <button class="btn" id="mk">新しい開封所を作る</button>
+      <p class="hint">作ったあとに出てくる招待リンクを送ると、お友達が同じ開封所に入れます。</p>
+      <div class="or">開封所コードを持っている人</div>
+      <form id="joinCode"><input id="code" maxlength="6" placeholder="ABC123" aria-label="開封所コード" value="${esc(last || '')}" autocomplete="off"><button class="btn" type="submit">入る</button></form>
     </div>`);
     $('mk').onclick = e => { e.target.disabled = true; createRoom().finally(() => { if ($('mk')) $('mk').disabled = false; }); };
     $('joinCode').onsubmit = e => {
       e.preventDefault(); const c = $('code').value.trim().toUpperCase();
-      if (!CODE_RE.test(c)) { toast('部屋コードは英数字6文字です'); return; }
+      if (!CODE_RE.test(c)) { toast('開封所コードは英数字6文字です'); return; }
       enterRoom(c);
     };
     return;
@@ -419,11 +426,11 @@ function renderSettings(el) {
       <input type="text" id="myname" value="${esc(my.name)}" maxlength="12" aria-label="ニックネーム">
       <select id="myoshi" aria-label="推し">${NORMALS.map(m => `<option value="${m.id}" ${m.id === my.oshi ? 'selected' : ''}>${esc(m.name)}推し</option>`).join('')}</select></div>
     <div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetMine">自分の開封記録をリセット</button></div>` : ''}
-    <h2>パックの設定${mode === 'room' ? '（部屋の全員共通）' : ''}</h2>
-    ${owner ? '' : '<p class="hint">部屋を作った人だけが変えられます。</p>'}
+    <h2>パックの設定${mode === 'room' ? '（開封所の全員共通）' : ''}</h2>
+    ${owner ? '' : '<p class="hint">開封所を作った人だけが変えられます。</p>'}
     <div class="field"><label for="rate">シークレット排出率：<b id="rv">${roomDoc.secretRate}%</b></label><input type="range" id="rate" min="0" max="20" value="${roomDoc.secretRate}" ${owner ? '' : 'disabled'}></div>
     <div class="field"><label for="price">1袋の値段（円）</label><input type="number" id="price" min="0" step="10" value="${roomDoc.price}" ${owner ? '' : 'disabled'}></div>
-    ${owner && mode === 'room' ? `<h2>部屋を作った人用</h2><div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetAll">全員の開封記録をリセット</button></div>` : ''}
+    ${owner && mode === 'room' ? `<h2>開封所を作った人用</h2><div class="actions" style="justify-content:flex-start"><button class="btn ghost" id="resetAll">全員の開封記録をリセット</button></div>` : ''}
     <p class="hint" id="confirmMsg" hidden></p>
     <p class="hint">カードの写真は公式アーティスト写真です（各メンバー18ショット、シークレットは集合写真16ショット）。</p>`;
   const q = s => el.querySelector(s);
@@ -444,7 +451,7 @@ function renderSettings(el) {
   const wipe = p => Object.assign(p, { inv: {}, shots: {}, pulls: 0, hits: 0, queue: 0, recent: [] });
   if (my && my.name) q('#resetMine').onclick = () => ask('mine', 'もう一度押すと、自分の開封記録を消します。', () => { wipe(my); saveMe(); });
   const ra = q('#resetAll');
-  if (ra) ra.onclick = () => ask('all', 'もう一度押すと、部屋の全員の開封記録を消します。', () => { for (const id of Object.keys(players)) { wipe(players[id]); savePlayer(id); } });
+  if (ra) ra.onclick = () => ask('all', 'もう一度押すと、開封所の全員の開封記録を消します。', () => { for (const id of Object.keys(players)) { wipe(players[id]); savePlayer(id); } });
 }
 document.getElementById('tabs').addEventListener('click', e => {
   const b = e.target.closest('[data-tab]'); if (!b) return; view.tab = b.dataset.tab; pendingReset = null; renderPanel();

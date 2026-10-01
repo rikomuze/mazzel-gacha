@@ -191,4 +191,20 @@ button.mini:hover{transform:translateY(-2px) rotate(-1deg)}
 .dlg-cell.on{outline:2.5px solid var(--berry);outline-offset:1px}
 .dlg-cell.none{box-shadow:none;border:var(--dash);background:transparent;display:grid;place-items:center;color:var(--faded);font-family:var(--hand);cursor:default}
 @media (max-width:420px){.dlg-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* invite box (in an open 開封所) */
+.roombar{display:block}
+.invite{background:var(--paper);box-shadow:var(--shadow);padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px;position:relative}
+.invite::before{content:"";position:absolute;top:-7px;left:18px;width:58px;height:16px;background:var(--tape-mint);transform:rotate(-4deg)}
+.invite.alone{outline:2px dashed var(--berry);outline-offset:3px}
+.invite-t{display:flex;flex-direction:column;gap:2px}
+.invite-t b{font-family:var(--hand);font-weight:600;font-size:1.1rem;color:var(--pencil)}
+.invite-t span{font-size:.8rem;color:var(--faded);line-height:1.6}
+.invite-row{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.invite-row code{flex:1 1 180px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--desk);border:1px solid var(--line);padding:10px;font-size:.78rem;color:var(--pencil);user-select:all}
+.invite-row .btn{flex:0 0 auto}
+.invite-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.8rem;color:var(--faded)}
+.invite-foot b{font-family:var(--hand);font-weight:600;font-size:1rem;letter-spacing:.12em;color:var(--pencil)}
+.linkbtn{background:none;border:0;padding:8px 0;min-height:44px;color:var(--faded);text-decoration:underline;font-size:.8rem;cursor:pointer}
+body:not([data-mode="lobby"]) #guide{display:none!important}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}

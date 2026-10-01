@@ -1,7 +1,7 @@
 # 推しガチャ開封所
 
 MUZE TOOL BOX のツール。銀袋を指で切って開ける、MAZZELアー写カードのランダム開封ごっこです。
-部屋を作って招待リンクを送ると、友達がそれぞれのスマホから同じ部屋に参加でき、自引きランキング・開封の流れ・交換できる組み合わせがリアルタイムで並びます。
+開封所を作って招待リンクを送ると、お友達がそれぞれのスマホから同じ開封所に参加でき、自引きランキング・開封の流れ・交換できる組み合わせがリアルタイムで並びます。
 
 - GitHub Pages 対応の静的サイト（ビルド不要）
 - 共有には Firebase（匿名ログイン + Firestore、無料枠）を使用
@@ -13,7 +13,7 @@ MUZE TOOL BOX のツール。銀袋を指で切って開ける、MAZZELアー写
 | --- | --- |
 | `index.html` | ページ本体（MUZE TOOL BOX 共通ヘッダー付き） |
 | `assets/style.css` | 「作業机」ブランドのスタイル |
-| `assets/app.js` | ガチャ・部屋・共有のロジック |
+| `assets/app.js` | ガチャ・開封所・共有のロジック |
 | `assets/firebase-config.js` | Firebase の設定（ここに貼る） |
 | `firestore.rules` | Firestore のセキュリティルール（Firebaseコンソールに貼る） |
 | `photos/<member>/01〜18.jpg` | 各メンバーのアー写カード（15枚＋最新アー写3枚） |
@@ -31,8 +31,8 @@ MUZE TOOL BOX のツール。銀袋を指で切って開ける、MAZZELアー写
 ## データの形
 
 ```
-rooms/{部屋コード}                 { owner, price, secretRate, createdAt }
-rooms/{部屋コード}/players/{uid}   { name, oshi, inv, shots, pulls, hits, queue, recent }
+rooms/{開封所コード}                 { owner, price, secretRate, createdAt }
+rooms/{開封所コード}/players/{uid}   { name, oshi, inv, shots, pulls, hits, queue, recent }
 ```
 
 - `inv`: メンバーごとの枚数
