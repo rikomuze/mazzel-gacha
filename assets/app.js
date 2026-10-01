@@ -366,12 +366,47 @@ function renderPanel() {
       const dup = MEMBERS.reduce((s, m) => s + Math.max(0, cnt(p, m.id) - 1), 0);
       return `<div class="pl"><div class="pl-h"><b>${esc(p.name)}${id === me ? '（自分）' : ''}</b><span>${own}/${MEMBERS.length}人 ・ アー写${shotCount(p)}/${SHOT_TOTAL} ・ ダブり${dup}枚</span></div>
       <div class="coll">${MEMBERS.map(m => { const c = cnt(p, m.id); const g = got(p, m.id); const src = m.shots[g[g.length - 1] ?? 0];
-        return c ? `<div class="mini"><span class="in"><img src="${esc(src)}" alt="" loading="lazy"></span>
+        return c ? `<button class="mini" data-open="${esc(id)}" data-mem="${m.id}" aria-label="${esc(p.name)}の${esc(m.name)}のカードを見る"><span class="in"><img src="${esc(src)}" alt="" loading="lazy"></span>
           <span class="sh">${g.length}/${m.shots.length}</span>
-          ${p.oshi === m.id ? '<span class="star">推し</span>' : ''}<span class="cnt">×${c}</span></div>`
+          ${p.oshi === m.id ? '<span class="star">推し</span>' : ''}<span class="cnt">×${c}</span></button>`
         : `<div class="mini none" title="${esc(m.name)}">?</div>`; }).join('')}</div></div>`; }).join('')
       : '<p class="hint">参加した人のコレクションがここに並びます。</p>';
+    el.querySelectorAll('[data-open]').forEach(btn => btn.onclick = () => openCards(btn.dataset.open, btn.dataset.mem));
   } else renderSettings(el);
+}
+
+/* ---------- card list modal ---------- */
+let dlgState = null; // {pid, mid, pick}
+function openCards(pid, mid) {
+  const p = players[pid], g = got(p, mid);
+  dlgState = { pid, mid, pick: g.length ? g[g.length - 1] : null };
+  let d = $('cardsDlg');
+  if (!d) {
+    d = document.createElement('dialog'); d.id = 'cardsDlg'; d.className = 'cards-dlg';
+    d.addEventListener('click', e => { if (e.target === d) d.close(); });
+    d.addEventListener('close', () => { dlgState = null; });
+    document.body.appendChild(d);
+  }
+  renderCards();
+  if (!d.open) d.showModal();
+}
+function renderCards() {
+  const d = $('cardsDlg'); if (!d || !dlgState) return;
+  const p = players[dlgState.pid], m = M(dlgState.mid);
+  if (!p || !m) { d.close(); return; }
+  const g = got(p, m.id), c = cnt(p, m.id), pick = dlgState.pick;
+  d.innerHTML = `
+    <div class="dlg-head">
+      <div><b>${esc(m.name)}</b><span>${esc(p.name)}${dlgState.pid === me ? '（自分）' : ''}のカード ・ アー写${g.length}/${m.shots.length} ・ ${c}枚引いた</span></div>
+      <button class="dlg-x" id="dlgClose" aria-label="閉じる"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+    </div>
+    ${pick !== null ? `<figure class="dlg-big"><img src="${esc(m.shots[pick])}" alt="${esc(m.name)}のアー写 No.${pick + 1}"><figcaption>No.${String(pick + 1).padStart(2, '0')}</figcaption></figure>` : ''}
+    <div class="dlg-grid">${m.shots.map((src, k) => g.includes(k)
+      ? `<button class="dlg-cell ${k === pick ? 'on' : ''}" data-k="${k}" aria-label="No.${k + 1}を大きく見る"><img src="${esc(src)}" alt="" loading="lazy"><span>${String(k + 1).padStart(2, '0')}</span></button>`
+      : `<div class="dlg-cell none"><span>${String(k + 1).padStart(2, '0')}</span>?</div>`).join('')}
+    </div>`;
+  $('dlgClose').onclick = () => d.close();
+  d.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { dlgState.pick = +b.dataset.k; renderCards(); d.scrollTo({ top: 0, behavior: 'smooth' }); });
 }
 const shotCount = p => MEMBERS.reduce((s, m) => s + got(p, m.id).length, 0);
 function renderSettings(el) {
@@ -428,6 +463,7 @@ function renderAll() {
   renderTop(); renderStage();
   const panel = $('panel');
   if (view.tab !== 'set' || !panel.contains(document.activeElement)) renderPanel();
+  if (dlgState) renderCards();
 }
 setInterval(() => { if (view.tab === 'rank') renderPanel(); }, 30000);
 
