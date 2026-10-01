@@ -295,9 +295,10 @@ function bindTear() {
   pack.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tear(); } });
 }
 let tearLockUntil = 0; // 袋をもらった直後の連打で、勝手に開かないようにする
-function tear() {
+function tear(fromLink) {
   const pack = $('pack'), p = mine();
-  if (!pack || tearing || !p || p.queue <= 0 || Date.now() < tearLockUntil) return;
+  if (!pack || tearing || !p || p.queue <= 0) return;
+  if (fromLink && Date.now() < tearLockUntil) return; // 袋をもらった直後の二度押しだけ無視（なぞる操作は止めない）
   const m = draw(), k = Math.floor(Math.random() * m.shots.length), had = got(p, m.id), isNew = !had.includes(k);
   tearing = true;
   const willHit = p.oshi === m.id;
@@ -334,10 +335,10 @@ function confetti(host) {
 $('stage').addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return; const p = mine(); if (!p) return;
   switch (a.dataset.act) {
-    case 'buy1': p.queue += 1; view.stage = 'pack'; tearLockUntil = Date.now() + 700; saveMe(); break;
-    case 'buy5': p.queue += 5; view.stage = 'pack'; tearLockUntil = Date.now() + 700; saveMe(); break;
-    case 'next': view.stage = 'pack'; tearLockUntil = Date.now() + 700; break;
-    case 'tear': tear(); return;
+    case 'buy1': p.queue += 1; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
+    case 'buy5': p.queue += 5; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
+    case 'next': view.stage = 'pack'; break;
+    case 'tear': tear(true); return;
   }
   renderAll();
 });
