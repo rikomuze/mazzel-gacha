@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>推しガチャ開封所｜MUZE PLAY ROOM</title>
+  <meta name="description" content="銀袋を切って開けるMAZZELアー写カードのランダム開封ごっこ。お友達と遊ぶのも、1人で遊ぶのもOK。">
+  <meta property="og:title" content="推しガチャ開封所｜MUZE PLAY ROOM">
+  <meta property="og:description" content="銀袋を切って開けるMAZZELアー写カードのランダム開封ごっこ。お友達と遊ぶのも、1人で遊ぶのもOK。">
+  <meta property="og:image" content="https://rikomuze.github.io/mazzel-gacha/photos/group/01.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
+  <link rel="stylesheet" href="assets/style.css?v=20261002-playroom">
+</head>
+<body>
+<div class="wrap">
+  <header class="room-nav">
+    <a href="https://rikomuze.github.io/muze-tool-box/play-room/">MUZE PLAY ROOM</a>
+    <a class="old-version" href="../">いつもの開封所</a>
+  </header>
+  <section class="room-hero">
+    <div><p class="room-label">01 / OPEN &amp; COLLECT</p>
+    <h1>推し<span>ガチャ</span>開封所</h1>
+    <p class="sub">銀袋を開けて、推しを自引き。<br>ひとりでも、お友達とでも。</p></div>
+    <span class="hero-photo" aria-hidden="true"><img src="../photos/group/01.jpg" alt="" width="160" height="130"><span>自引きしたい！</span></span>
+  </section>
+
+  <section class="panel guide" id="guide" hidden aria-labelledby="guide-h">
+    <h2 id="guide-h">遊び方</h2>
+    <ol class="steps">
+      <li><b>遊び方を選ぶ</b><span>ひとりでも、お友達とでも。</span></li>
+      <li><b>推しを選ぶ</b><span>推しのカードが出たら「自引き」！</span></li>
+      <li><b>銀袋を切って開ける</b><span>切り取り線を指でなぞって開封。アー写を集めてコンプリートをめざそう。</span></li>
+    </ol>
+  </section>
+
+  <div class="banner" id="banner" hidden></div>
+  <div class="roombar" id="roombar" hidden></div>
+  <div class="players" id="players"></div>
+  <section class="stage" id="stage" aria-live="polite"><p class="empty">読み込み中…</p></section>
+
+  <div class="tabs" role="tablist" id="tabs" hidden>
+    <button role="tab" aria-selected="true" data-tab="rank">みんなの結果</button>
+    <button role="tab" aria-selected="false" data-tab="coll">コレクション</button>
+    <button role="tab" aria-selected="false" data-tab="set">設定</button>
+  </div>
+  <section class="panel" id="panel" hidden></section>
+  <footer class="credit">MAZZEL・BMSG公式とは関係のない非公式ファンメイドツールです。<br><span>MUZE PLAY ROOM / MUZE TOOL BOX</span></footer>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="assets/firebase-config.js?v=20261002-playroom"></script>
+<script src="assets/app.js?v=20261002-playroom"></script>
+</body>
+</html>
