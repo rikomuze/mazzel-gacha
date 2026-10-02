@@ -356,13 +356,14 @@ function renderStage() {
       <div class="verdict ${view.hit ? 'hit' : ''}">${esc(view.verdict)}</div>
       <div class="note">${esc(view.note)}</div>
       <div class="actions">${q > 0 ? `<button class="btn" data-act="next">次の袋へ（残り${q}）</button>` :
-        `<button class="btn" data-act="buy1">もう1袋</button><button class="btn ghost" data-act="buy5">5袋まとめてもらう</button>`}</div>`;
+        `<p class="note">手持ちの袋をすべて開封しました</p><button class="btn" data-act="restock">新しい袋をもらう</button>`}</div>`;
   } else if (q > 0) {
     html += `<div class="queue">未開封 ${q}袋</div><div class="slot">${packHTML(false)}</div>
       <div class="note" style="margin-top:0">切り取り線を指で右へなぞると開きます</div>
       <button class="linkbtn tearlink" data-act="tear">なぞるのが難しいときは、ここをタップ</button>`;
   } else {
     html += `<div class="queue">未開封 0袋</div><div class="slot">${packHTML(true)}</div>
+      <p class="note">次は何袋もらう？</p>
       <div class="actions"><button class="btn" data-act="buy1">1袋もらう</button><button class="btn ghost" data-act="buy5">5袋まとめてもらう</button></div>`;
   }
   if (!setStage(html, true)) return;
@@ -427,6 +428,7 @@ function doAct(act) {
     case 'buy1': p.queue += 1; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
     case 'buy5': p.queue += 5; view.stage = 'pack'; tearLockUntil = Date.now() + 400; saveMe(); break;
     case 'next': view.stage = 'pack'; break;
+    case 'restock': view.stage = 'pack'; break;
     case 'start': view.inviting = false; window.scrollTo(0, 0); break;
     case 'tear': tear(true); return;
     default: return;
